@@ -4,8 +4,16 @@ import json
 import time
 from typing import Dict, List, Tuple
 import numpy as np
-import torch
-from torch.utils.data import Dataset, DataLoader
+
+# Optional PyTorch for dataset loading during local training
+try:
+    import torch
+    from torch.utils.data import Dataset, DataLoader
+    HAS_TORCH = True
+except (ImportError, ModuleNotFoundError):
+    HAS_TORCH = False
+    Dataset = object
+    DataLoader = None
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET_DIR = os.path.join(BASE_DIR, "dataset")
@@ -40,31 +48,46 @@ def folder_to_display_phrase(folder_name: str) -> str:
 
 def get_dynamic_vocabulary() -> List[str]:
     """
-    Scans the dataset directory.
-    Whatever folders exist (including custom words and full sentences) become active vocabulary.
-    Always ensures RESTING is at index 0.
+    Scans the dataset directory or loads cached vocab.json.
+    100% read-only safe for serverless runtimes (Vercel / AWS Lambda).
     """
-    os.makedirs(DATASET_DIR, exist_ok=True)
-    folders = [f for f in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, f))]
+    # 1. Prefer reading existing vocab.json (matches model weights)
+    if os.path.exists(VOCAB_FILE):
+        try:
+            with open(VOCAB_FILE, "r", encoding="utf-8") as f:
+                v = json.load(f)
+                if isinstance(v, list) and len(v) > 0:
+                    return v
+        except Exception:
+            pass
 
+    # 2. If dataset directory exists, scan for additional folders
     vocab_list = []
-    if "RESTING" in folders:
-        vocab_list.append("RESTING")
-        folders.remove("RESTING")
-    else:
-        # Create RESTING if missing
-        os.makedirs(os.path.join(DATASET_DIR, "RESTING"), exist_ok=True)
-        vocab_list.append("RESTING")
+    if os.path.exists(DATASET_DIR):
+        try:
+            folders = [f for f in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, f))]
+            if "RESTING" in folders:
+                vocab_list.append("RESTING")
+                folders.remove("RESTING")
+            else:
+                vocab_list.append("RESTING")
 
-    # Add all other folders
-    for f in sorted(folders):
-        display_name = folder_to_display_phrase(f)
-        if display_name not in vocab_list:
-            vocab_list.append(display_name)
+            for f in sorted(folders):
+                display_name = folder_to_display_phrase(f)
+                if display_name not in vocab_list:
+                    vocab_list.append(display_name)
+        except Exception:
+            pass
 
-    # Save to vocab.json for model synchrony
-    with open(VOCAB_FILE, "w", encoding="utf-8") as f:
-        json.dump(vocab_list, f, indent=2)
+    if not vocab_list:
+        vocab_list = list(DEFAULT_VOCABULARY)
+
+    # 3. Only attempt to write if directory is writable
+    try:
+        with open(VOCAB_FILE, "w", encoding="utf-8") as f:
+            json.dump(vocab_list, f, indent=2)
+    except Exception:
+        pass  # Read-only serverless environment
 
     return vocab_list
 
@@ -118,19 +141,21 @@ def add_custom_phrase(phrase: str) -> str:
         raise ValueError("Invalid phrase entered")
 
     folder_path = os.path.join(DATASET_DIR, clean_name)
-    os.makedirs(folder_path, exist_ok=True)
-
-    # Check if folder has files; if not, seed 5 baseline files
-    existing = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-    if len(existing) == 0:
-        base_feat = synthesize_custom_trajectory(phrase)
-        for i in range(5):
-            jitter = base_feat.copy()
-            shift = np.random.randint(-1, 2)
-            jitter = np.roll(jitter, shift, axis=0)
-            jitter[:, :6] *= np.random.uniform(0.95, 1.05)
-            jitter += np.random.normal(0, 0.003, jitter.shape)
-            np.save(os.path.join(folder_path, f"baseline_{i+1:03d}.npy"), jitter.astype(np.float32))
+    try:
+        os.makedirs(folder_path, exist_ok=True)
+        # Check if folder has files; if not, seed 5 baseline files
+        existing = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
+        if len(existing) == 0:
+            base_feat = synthesize_custom_trajectory(phrase)
+            for i in range(5):
+                jitter = base_feat.copy()
+                shift = np.random.randint(-1, 2)
+                jitter = np.roll(jitter, shift, axis=0)
+                jitter[:, :6] *= np.random.uniform(0.95, 1.05)
+                jitter += np.random.normal(0, 0.003, jitter.shape)
+                np.save(os.path.join(folder_path, f"baseline_{i+1:03d}.npy"), jitter.astype(np.float32))
+    except (OSError, PermissionError):
+        pass  # Read-only serverless environment (Vercel)
 
     get_dynamic_vocabulary() # Refresh vocab.json
     return folder_to_display_phrase(clean_name)
@@ -141,17 +166,24 @@ def save_user_sample(phrase: str, tensor_data: List[List[float]]) -> str:
     Saves a 30x12 kinematic trajectory into dataset/<PHRASE>/sample_<timestamp>.npy
     """
     folder_name = clean_folder_name(phrase)
-    folder_path = os.path.join(DATASET_DIR, folder_name)
-    os.makedirs(folder_path, exist_ok=True)
-
     arr = np.array(tensor_data, dtype=np.float32)
     if arr.shape != (30, 12):
         raise ValueError(f"Expected shape (30, 12), got {arr.shape}")
 
     timestamp = int(time.time() * 1000)
-    file_path = os.path.join(folder_path, f"sample_{timestamp}.npy")
-    np.save(file_path, arr)
-    return file_path
+    try:
+        folder_path = os.path.join(DATASET_DIR, folder_name)
+        os.makedirs(folder_path, exist_ok=True)
+        file_path = os.path.join(folder_path, f"sample_{timestamp}.npy")
+        np.save(file_path, arr)
+        return file_path
+    except (OSError, PermissionError):
+        # Fallback to /tmp in serverless environment
+        tmp_folder = os.path.join("/tmp", "dataset", folder_name)
+        os.makedirs(tmp_folder, exist_ok=True)
+        file_path = os.path.join(tmp_folder, f"sample_{timestamp}.npy")
+        np.save(file_path, arr)
+        return file_path
 
 
 def get_dataset_statistics() -> Dict:
@@ -227,4 +259,6 @@ class UserKinematicDataset(Dataset):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        return torch.tensor(self.samples[idx]), torch.tensor(self.labels[idx])
+        if HAS_TORCH and torch is not None:
+            return torch.tensor(self.samples[idx]), torch.tensor(self.labels[idx])
+        return self.samples[idx], self.labels[idx]
