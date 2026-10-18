@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SilentVoice AI • Neural Silent Speech Interface (Samsung SIC-AI)</title>
+
+  <!-- Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/css/style.css">
+
+  <!-- MediaPipe CDNs (GPU Accelerated in Browser) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- Bionic Header -->
+  <header class="bionic-header">
+    <div class="brand-box">
+      <div class="brand-icon">👄</div>
+      <div class="brand-title">SILENTVOICE <span>AI</span></div>
+    </div>
+
+    <div class="header-badges">
+      <span class="badge-tag badge-sic">Samsung Innovation Campus • SIC-AI</span>
+      <span class="badge-tag badge-bionic">
+        <span class="pulse-indicator"></span>
+        Neural Bionic Speech Engine
+      </span>
+    </div>
+  </header>
+
+  <!-- Main Bionic Grid Container -->
+  <main class="bionic-container">
+
+    <!-- LEFT PANE: CAMERA & DATASET RECORDER -->
+    <section class="vision-pane">
+      <div class="pane-heading">
+        <span>📷 High-Precision Oculofacial Sensory Feed</span>
+      </div>
+
+      <div class="video-container">
+        <video id="cameraFeed" playsinline autoplay muted></video>
+        <canvas id="meshCanvas"></canvas>
+
+        <div class="camera-hud-overlay">
+          <div class="hud-pill" id="recordingIndicator" style="display:none; background: rgba(239, 68, 68, 0.85); color: white; border-color: red;">
+            🔴 RECORDING MOVEMENT (<span id="recCountdown">30</span> frames)
+          </div>
+          <div class="hud-pill" id="hudStatus">MediaPipe 468-Mesh • WebGL</div>
+        </div>
+
+        <div class="aperture-gauge-box">
+          <span style="color: var(--cyan-bionic); font-weight: 700;">KINEMATIC SENSING ACTIVE</span>
+        </div>
+      </div>
+
+      <!-- Vision Action Controls -->
+      <div class="controls-bar">
+        <button class="btn-bionic btn-primary" id="btnCamera">
+          <span>⚡ Engage Bionic Camera</span>
+        </button>
+        <button class="btn-bionic btn-secondary" id="btnCalibrate" title="Sets your personal resting mouth baseline">
+          <span>🎯 Calibrate Neutral Mouth</span>
+        </button>
+      </div>
+
+      <button class="btn-bionic btn-secondary" id="btnVoiceToggle" style="width: 100%; justify-content: center;">
+        <span>🔊 Audio Voice: ON (Audible TTS)</span>
+      </button>
+
+      <!-- PERSONAL DATA COLLECTION STUDIO & 100-EPOCH TRAINER -->
+      <div style="background: var(--bg-card); border: 2px solid #00f2fe; border-radius: 14px; padding: 16px; margin-top: 4px; box-shadow: 0 0 20px rgba(0, 242, 254, 0.15);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 0.8rem; font-weight: 800; color: var(--cyan-bionic); text-transform: uppercase; letter-spacing: 1px;">
+            🎯 Custom Movement Studio
+          </span>
+          <span style="font-family: var(--font-mono); font-size: 0.72rem; color: #a855f7;" id="totalDatasetCount">
+            {{ dataset_stats.total_samples }} Total Files Stored
+          </span>
+        </div>
+
+        <p style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">
+          Add <strong>ANY word or full sentence</strong> to create a dedicated directory in <code style="color: #38bdf8; font-family: monospace;">dataset/&lt;PHRASE&gt;</code>, record your actual movements, and train the neural network for 100 epochs!
+        </p>
+
+        <!-- New: Add Any Custom Word or Full Sentence -->
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <input type="text" id="customPhraseInput" placeholder="Type ANY word or full sentence (e.g. I WANT TO GO HOME)" 
+            style="flex: 1; background: #050811; border: 1px solid var(--bg-card-border); color: #f8fafc; border-radius: 8px; padding: 10px 12px; font-size: 0.82rem; font-family: var(--font-mono); outline: none;">
+          <button id="btnAddPhrase" class="btn-bionic" style="background: linear-gradient(135deg, #0284c7, #2563eb); color: white; padding: 10px 14px; font-size: 0.8rem; white-space: nowrap;">
+            <span>➕ Add Phrase</span>
+          </button>
+        </div>
+
+        <!-- Word/Sentence Selector & Record Button -->
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <select id="recordWordSelect" style="flex: 1; background: #050811; border: 1px solid var(--bg-card-border); color: #f8fafc; border-radius: 8px; padding: 10px 12px; font-weight: 700; font-family: var(--font-mono); font-size: 0.85rem;">
+            {% for word in vocabulary %}
+            <option value="{{ word }}">Record "{{ word }}"</option>
+            {% endfor %}
+          </select>
+
+          <button id="btnRecordSample" class="btn-bionic" style="background: #ef4444; color: white; padding: 10px 16px; font-size: 0.82rem;">
+            <span>⏺️ Record 1s Movement</span>
+          </button>
+        </div>
+
+        <!-- 100-Epoch Training Button -->
+        <button id="btnTrain100" class="btn-bionic" style="width: 100%; background: linear-gradient(135deg, #a855f7, #6366f1); color: white; justify-content: center; font-size: 0.88rem; box-shadow: 0 4px 18px rgba(168, 85, 247, 0.4);">
+          <span>⚡ Train Model on Stored Movements (100 Epochs)</span>
+        </button>
+
+        <div id="trainStatusMsg" style="font-family: var(--font-mono); font-size: 0.75rem; color: #34d399; margin-top: 8px; text-align: center; display: none;"></div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT PANE: DECODER & AGENTIC SYNTHESIZER -->
+    <section class="speech-pane">
+
+      <!-- Live Decoded Word Billboard -->
+      <div class="decoded-word-card" id="billboardCard">
+        <div class="billboard-label">
+          <span>Decoded Articulatory Viseme</span>
+          <span class="confidence-badge" id="confidenceBadge">Awaiting Movement</span>
+        </div>
+
+        <div class="billboard-word" id="billboardWord">
+          RESTING
+        </div>
+
+        <!-- Agentic Natural Language Expansion -->
+        <div class="synthesized-box">
+          <div class="synthesized-label">
+            <span>✨ Agentic Bionic Speech Output (Spoken Aloud):</span>
+          </div>
+          <div class="synthesized-text" id="synthesizedText">
+            "Mouth a silent word in front of the camera to synthesize speech."
+          </div>
+        </div>
+      </div>
+
+      <!-- Real-Time Hardware Telemetry -->
+      <div class="telemetry-row">
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Inference Latency</div>
+          <div class="kpi-val" id="kpiLatency">--<span style="font-size:0.75rem">ms</span></div>
+          <div class="kpi-sub">BiLSTM + Attention</div>
+        </div>
+
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Vertical Aperture</div>
+          <div class="kpi-val" id="kpiAperture" style="color: #a855f7;">--%</div>
+          <div class="kpi-sub">Mouth Height</div>
+        </div>
+
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Kinematic Velocity</div>
+          <div class="kpi-val" id="kpiVelocity" style="color: var(--green-active);">--</div>
+          <div class="kpi-sub">ΔHeight / ΔTime</div>
+        </div>
+
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Pipeline Speed</div>
+          <div class="kpi-val" id="kpiFps" style="color: var(--amber-warn);">--</div>
+          <div class="kpi-sub">Real-Time FPS</div>
+        </div>
+      </div>
+
+      <!-- Viseme Softmax Probability Distribution -->
+      <div class="heatmap-card">
+        <div class="heatmap-title">
+          <span>Viseme Articulatory Softmax Distribution</span>
+          <span style="font-size: 0.7rem; color: var(--cyan-bionic); font-family: var(--font-mono);">12-Class PyTorch Head</span>
+        </div>
+
+        <div class="viseme-bars-grid">
+          {% for word in vocabulary %}
+          <div class="viseme-bar-item">
+            <div class="viseme-name-row">
+              <span>{{ word }}</span>
+              <span id="val-{{ word | replace(' ', '') }}" style="color: var(--cyan-bionic);">0.0%</span>
+            </div>
+            <div class="viseme-track">
+              <div class="viseme-fill" id="bar-{{ word | replace(' ', '') }}"></div>
+            </div>
+            <div style="font-size: 0.65rem; color: #64748b; margin-top: 3px; font-family: var(--font-mono);">
+              Stored: <span id="count-{{ word | replace(' ', '_') }}">{{ dataset_stats.per_word_counts.get(word, 0) }}</span> files
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Decoded Speech Log -->
+      <div class="history-card">
+        <div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px;">
+          Chronological Clinical Speech History
+        </div>
+        <div class="history-list" id="historyList">
+          <div class="history-item">
+            <span><strong>SYSTEM:</strong> Bionic Speech Kernel Initialized</span>
+            <span style="color:#64748b">Online</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Client Scripts -->
+  <script src="/static/js/mediapipe_lips.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
