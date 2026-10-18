@@ -1,0 +1,7 @@
+dataset/**
+.git/**
+__pycache__/**
+*.pyc
+.env
+.venv
+models/lip_model.pth

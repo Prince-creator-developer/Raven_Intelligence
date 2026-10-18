@@ -106,6 +106,10 @@ def train_custom_100_epochs(epochs: int = 100, batch_size: int = 32, lr: float =
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), save_path)
+            # Export to lightweight NumPy format for serverless Vercel deployment
+            npz_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lip_model_weights.npz")
+            np_weights = {k: v.cpu().numpy() for k, v in model.state_dict().items()}
+            np.savez(npz_path, **np_weights)
 
         if epoch % 10 == 0 or epoch == epochs:
             print(f"  Epoch {epoch:03d}/{epochs:03d} | Loss: {train_loss/max(train_total,1):.4f} | Train Acc: {train_acc*100:.1f}% | Val Acc: {val_acc*100:.1f}% (Best: {best_val_acc*100:.1f}%)")
