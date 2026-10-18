@@ -26,6 +26,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const kpiFpsEl = document.getElementById('kpiFps');
   const historyListEl = document.getElementById('historyList');
 
+  // Standby & Simulation Elements
+  const standbyOverlay = document.getElementById('standbyOverlay');
+  const btnSimulate = document.getElementById('btnSimulate');
+  const btnQuickDemo = document.getElementById('btnQuickDemo');
+
   // Studio Elements
   const customPhraseInput = document.getElementById('customPhraseInput');
   const btnAddPhrase = document.getElementById('btnAddPhrase');
@@ -40,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isCameraActive = false;
   let isVoiceEnabled = true;
   let cameraInstance = null;
+  let localMediaStream = null;
   let faceMesh = null;
   let lastPredictTime = 0;
   let lastSpokenSentence = "";
@@ -235,13 +241,25 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // CAMERA CONTROLS
+  // CAMERA CONTROLS (NATIVE WEBRTC + MEDIAPIPE PIPELINE)
   // --------------------------------------------------------------------------
   btnCamera.addEventListener('click', async () => {
     if (!isCameraActive) {
       try {
         btnCamera.textContent = '⌛ Starting Camera...';
 
+        // 1. Start Native WebRTC Camera Stream directly
+        localMediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+          audio: false
+        });
+        videoEl.srcObject = localMediaStream;
+        await videoEl.play();
+
+        if (standbyOverlay) standbyOverlay.style.display = 'none';
+        resizeCanvas();
+
+        // 2. Initialize MediaPipe FaceMesh
         faceMesh = new FaceMesh({
           locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
         });
@@ -255,37 +273,126 @@ document.addEventListener('DOMContentLoaded', () => {
 
         faceMesh.onResults(onFaceMeshResults);
 
-        cameraInstance = new Camera(videoEl, {
-          onFrame: async () => {
-            if (isCameraActive) await faceMesh.send({ image: videoEl });
-          },
-          width: 640,
-          height: 480
-        });
-
-        await cameraInstance.start();
-        resizeCanvas();
-
+        // 3. Frame Processing Loop
         isCameraActive = true;
         btnCamera.textContent = '🛑 Stop Bionic Camera';
         btnCamera.classList.replace('btn-primary', 'btn-secondary');
+
+        async function processVideoFrame() {
+          if (!isCameraActive) return;
+          if (videoEl.readyState >= 2 && faceMesh) {
+            try {
+              await faceMesh.send({ image: videoEl });
+            } catch (e) {
+              console.warn('FaceMesh frame warning:', e);
+            }
+          }
+          requestAnimationFrame(processVideoFrame);
+        }
+        requestAnimationFrame(processVideoFrame);
 
         setTimeout(() => {
           if (latestLandmarks) extractor.calibrateNeutral(latestLandmarks, videoEl.videoWidth, videoEl.videoHeight);
         }, 1500);
 
       } catch (err) {
-        alert('Camera access denied or MediaPipe failed: ' + err.message);
+        alert('Webcam notice: ' + err.message + '\n\nPlease ensure camera access is allowed in your browser.');
         btnCamera.textContent = '⚡ Engage Bionic Camera';
+        if (standbyOverlay) standbyOverlay.style.display = 'flex';
+        isCameraActive = false;
       }
     } else {
-      if (cameraInstance) await cameraInstance.stop();
-      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
       isCameraActive = false;
+      if (localMediaStream) {
+        localMediaStream.getTracks().forEach(track => track.stop());
+        localMediaStream = null;
+      }
+      videoEl.srcObject = null;
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      if (standbyOverlay) standbyOverlay.style.display = 'flex';
       btnCamera.textContent = '⚡ Engage Bionic Camera';
       btnCamera.classList.replace('btn-secondary', 'btn-primary');
     }
   });
+
+  // --------------------------------------------------------------------------
+  // LIVE SPEECH SIMULATION DEMO (IMMEDIATE VERIFICATION)
+  // --------------------------------------------------------------------------
+  async function runSimulationDemo() {
+    const demoPhrases = ["WATER", "HELP", "THANK YOU", "DOCTOR", "YES"];
+    const chosenPhrase = demoPhrases[Math.floor(Math.random() * demoPhrases.length)];
+
+    if (standbyOverlay) standbyOverlay.style.display = 'none';
+    resizeCanvas();
+
+    // Synthesize 30-frame realistic articulatory trajectory
+    const seqLen = 30;
+    const trajectory = [];
+    for (let t = 0; t < seqLen; t++) {
+      const p = t / seqLen;
+      const aperture = 0.05 + 0.38 * Math.sin(p * Math.PI);
+      const width = 0.45 + 0.09 * Math.sin(p * Math.PI);
+      const aspect = aperture / (width + 1e-5);
+      const outerH = aperture * 1.5 + 0.08;
+      const dh = Math.cos(p * Math.PI) * 0.4;
+      const dw = Math.cos(p * Math.PI) * 0.1;
+      const d2h = -Math.sin(p * Math.PI);
+
+      trajectory.push([
+        aperture, width, aspect, outerH, 0.05, 0.06,
+        0.02, 0.08, dh, dw, d2h, 0.0
+      ]);
+    }
+
+    // Animate synthetic lips on canvas over 1 second (30 FPS)
+    let frame = 0;
+    const animTimer = setInterval(() => {
+      if (frame >= seqLen) {
+        clearInterval(animTimer);
+        return;
+      }
+
+      const h = trajectory[frame][0];
+      const w = trajectory[frame][1];
+      kpiApertureEl.textContent = `${(h * 100).toFixed(1)}%`;
+      kpiVelocityEl.textContent = `${trajectory[frame][8].toFixed(3)}`;
+      kpiFpsEl.textContent = `30 FPS`;
+
+      // Draw cybernetic lip wireframe on canvas
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      const cx = canvasEl.width / 2;
+      const cy = canvasEl.height / 2;
+      const rx = (w * canvasEl.width) / 2.2;
+      const ry = Math.max(h * canvasEl.height * 1.3, 10);
+
+      // Outer lip contour
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#00f2fe';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#00f2fe';
+      ctx.shadowBlur = 14;
+      ctx.stroke();
+
+      // Inner lip contour
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx * 0.65, Math.max(ry * 0.55, 5), 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#a855f7';
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      frame++;
+    }, 33);
+
+    // Run real-time neural inference & audio speech synthesis
+    await runInference(trajectory);
+  }
+
+  if (btnSimulate) btnSimulate.addEventListener('click', runSimulationDemo);
+  if (btnQuickDemo) btnQuickDemo.addEventListener('click', runSimulationDemo);
 
   btnCalibrate.addEventListener('click', () => {
     if (latestLandmarks) {

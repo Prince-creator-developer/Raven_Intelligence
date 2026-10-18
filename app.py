@@ -98,14 +98,52 @@ class AddWordRequest(BaseModel):
     phrase: str
 
 
+import jinja2
+
+def get_template_html() -> str:
+    candidates = [
+        os.path.join(BASE_DIR, "templates", "index.html"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "index.html"),
+        os.path.join(os.getcwd(), "templates", "index.html"),
+        "templates/index.html",
+        os.path.join("/var/task", "templates", "index.html")
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            try:
+                with open(c, "r", encoding="utf-8") as f:
+                    return f.read()
+            except Exception:
+                pass
+    return ""
+
+INDEX_HTML_CACHE = get_template_html()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_index(request: Request):
     stats = get_dataset_statistics()
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "vocabulary": stats["vocabulary"],
-        "dataset_stats": stats
-    })
+    vocab = stats.get("vocabulary", [])
+
+    # 1. Direct Jinja2 template string rendering (bulletproof on Vercel, eliminates TemplateNotFound)
+    raw_html = INDEX_HTML_CACHE or get_template_html()
+    if raw_html:
+        try:
+            t = jinja2.Template(raw_html)
+            rendered = t.render(request=request, vocabulary=vocab, dataset_stats=stats)
+            return HTMLResponse(content=rendered)
+        except Exception as e:
+            print(f"[TEMPLATE ERROR] {e}")
+
+    # 2. Standard templates.TemplateResponse fallback
+    try:
+        return templates.TemplateResponse("index.html", {
+            "request": request,
+            "vocabulary": vocab,
+            "dataset_stats": stats
+        })
+    except Exception as e:
+        return HTMLResponse(content=f"<html><body><h1>SilentVoice AI</h1><p>Online</p><p>Notice: {e}</p></body></html>", status_code=200)
 
 
 @app.post("/api/predict_silent_speech")

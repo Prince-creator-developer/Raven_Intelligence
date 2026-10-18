@@ -524,6 +524,20 @@ body {
         <video id="cameraFeed" playsinline autoplay muted></video>
         <canvas id="meshCanvas"></canvas>
 
+        <!-- Standby Animated Indicator -->
+        <div id="standbyOverlay" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at center, rgba(11, 17, 32, 0.85) 0%, rgba(5, 8, 17, 0.95) 100%); z-index: 5; text-align: center; padding: 20px;">
+          <div style="font-size: 2.2rem; margin-bottom: 8px;">👄</div>
+          <div style="font-size: 0.95rem; font-weight: 800; color: var(--cyan-bionic); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
+            OCULOFACIAL FEED STANDBY
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary); max-width: 340px; line-height: 1.4; margin-bottom: 14px;">
+            Click <strong>[⚡ Engage Bionic Camera]</strong> to start live webcam lip tracking, or click <strong>[🎮 Live Speech Demo]</strong> to test speech synthesis immediately.
+          </div>
+          <button class="btn-bionic" id="btnQuickDemo" style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 8px 16px; font-size: 0.8rem; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4);">
+            <span>🎮 Run Live Speech Demo</span>
+          </button>
+        </div>
+
         <div class="camera-hud-overlay">
           <div class="hud-pill" id="recordingIndicator" style="display:none; background: rgba(239, 68, 68, 0.85); color: white; border-color: red;">
             🔴 RECORDING MOVEMENT (<span id="recCountdown">30</span> frames)
@@ -541,8 +555,11 @@ body {
         <button class="btn-bionic btn-primary" id="btnCamera">
           <span>⚡ Engage Bionic Camera</span>
         </button>
+        <button class="btn-bionic" id="btnSimulate" style="background: linear-gradient(135deg, #10b981, #059669); color: white;">
+          <span>🎮 Live Speech Demo</span>
+        </button>
         <button class="btn-bionic btn-secondary" id="btnCalibrate" title="Sets your personal resting mouth baseline">
-          <span>🎯 Calibrate Neutral Mouth</span>
+          <span>🎯 Calibrate</span>
         </button>
       </div>
 
