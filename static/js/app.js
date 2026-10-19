@@ -1,7 +1,8 @@
 /**
- * SILENTVOICE AI • CLIENT APPLICATION ORCHESTRATOR V4.1
+ * SILENTVOICE AI • CLIENT APPLICATION ORCHESTRATOR V4.2
  * Unified Vision Pipeline, 10-Slot Visual Movement Studio,
- * Real-Time Continuous Conversational Decoder & AI Care Partner
+ * Articulatory Gesture Lifecycle (One-Shot per Utterance),
+ * Anti-Repetition Speech Queue & Model Class Synchronization
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -78,15 +79,21 @@ document.addEventListener('DOMContentLoaded', () => {
   let latestLandmarks = null;
   let frameCount = 0;
   let lastFpsTime = performance.now();
-  let lastPredictTime = 0;
   let isProcessingInference = false;
-  let lastSpokenWord = "";
-  let lastSpokenTime = 0;
   let isModalActive = false;
   let cancelRecordingFlag = false;
 
-  // Local word sample tracker
+  // Active Model Classes (synced directly with trained neural weights)
+  let activeModelClasses = ['RESTING', 'DOCTOR'];
   let wordSampleCounts = {};
+
+  // Articulatory Gesture Lifecycle (Prevents Repetitive Looping Audio)
+  let gestureState = 'REST'; // 'REST' | 'ARTICULATING' | 'LOCKOUT'
+  let gestureFrames = 0;
+  let peakAperture = 0;
+  let consecutiveRestCount = 0;
+  let lastEmittedWord = "";
+  let lastEmittedTime = 0;
 
   function resizeCanvas() {
     canvasEl.width = videoEl.clientWidth || 500;
@@ -95,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', resizeCanvas);
 
   // --------------------------------------------------------------------------
-  // TAB NAVIGATION (CAMERA REMAINS UNIFIED & ACTIVE ACROSS BOTH TABS)
+  // TAB NAVIGATION (CAMERA REMAINS UNIFIED ACROSS BOTH TABS)
   // --------------------------------------------------------------------------
   modeTabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -113,7 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --------------------------------------------------------------------------
-  // ROBUST NON-BLOCKING DUAL-VOICE TTS QUEUE (CHROMIUM SAFE)
+  // ROBUST ANTI-REPETITION DUAL-VOICE TTS QUEUE
   // --------------------------------------------------------------------------
   class RobustSpeechQueue {
     constructor() {
@@ -121,6 +128,8 @@ document.addEventListener('DOMContentLoaded', () => {
       this.isSpeaking = false;
       this.userVoice = null;
       this.aiVoice = null;
+      this.lastSpokenText = "";
+      this.lastSpokenTime = 0;
       this.initVoices();
 
       // Chromium watchdog: Prevent Web Speech API freezing
@@ -129,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
           window.speechSynthesis.pause();
           window.speechSynthesis.resume();
         }
-      }, 5000);
+      }, 4000);
     }
 
     initVoices() {
@@ -148,12 +157,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     speak(text, sender = 'patient') {
       if (!isVoiceEnabled || !('speechSynthesis' in window) || !text) return;
+
+      const now = performance.now();
+      // Strict anti-repetition: Ignore duplicate audio within 4 seconds!
+      if (text === this.lastSpokenText && (now - this.lastSpokenTime) < 4000) {
+        return;
+      }
+      this.lastSpokenText = text;
+      this.lastSpokenTime = now;
+
       this.queue.push({ text, sender });
       this.process();
     }
 
     process() {
-      if (this.isSpeaking || this.queue.length === 0) return;
+      if (this.isSpeaking || this.queue.length === 0 || !isVoiceEnabled) return;
       const item = this.queue.shift();
       this.isSpeaking = true;
 
@@ -168,17 +186,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         utterance.onend = () => {
           this.isSpeaking = false;
-          setTimeout(() => this.process(), 100);
+          setTimeout(() => this.process(), 120);
         };
         utterance.onerror = () => {
           this.isSpeaking = false;
-          setTimeout(() => this.process(), 100);
+          setTimeout(() => this.process(), 120);
         };
 
         window.speechSynthesis.speak(utterance);
       } catch (e) {
         this.isSpeaking = false;
       }
+    }
+
+    stopAll() {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      this.queue = [];
+      this.isSpeaking = false;
+      this.lastSpokenText = "";
     }
   }
 
@@ -206,9 +233,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = extractor.isRecording ? '#ef4444' : '#00f2fe';
+    ctx.strokeStyle = extractor.isRecording ? '#ef4444' : (gestureState === 'ARTICULATING' ? '#10b981' : '#00f2fe');
     ctx.lineWidth = 2.5;
-    ctx.shadowColor = extractor.isRecording ? '#ef4444' : '#00f2fe';
+    ctx.shadowColor = ctx.strokeStyle;
     ctx.shadowBlur = 12;
     ctx.stroke();
 
@@ -240,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // MEDIAPIPE FACE MESH RESULTS HANDLER
+  // MEDIAPIPE FACE MESH & GESTURE LIFECYCLE CONTROLLER
   // --------------------------------------------------------------------------
   function onFaceMeshResults(results) {
     frameCount++;
@@ -259,32 +286,67 @@ document.addEventListener('DOMContentLoaded', () => {
     latestLandmarks = results.multiFaceLandmarks[0];
     drawBionicLipMesh(latestLandmarks);
 
-    // Extract real physical features with true pixel-space metrics & VAD
+    // Extract kinematics
     const feat = extractor.extractFrameFeatures(latestLandmarks, videoEl.videoWidth || 640, videoEl.videoHeight || 480);
     if (!feat) return;
 
-    kpiApertureEl.textContent = `${(feat.metrics.vertical_aperture * 100).toFixed(1)}%`;
-    kpiVelocityEl.textContent = `${feat.metrics.velocity.toFixed(3)}`;
+    const ap = feat.metrics.vertical_aperture;
+    const vel = feat.metrics.velocity;
+    const neutral = extractor.calibratedNeutralH || 0.05;
 
-    // Reset duplicate lockout when mouth returns to resting closure
-    if (feat.metrics.consecutive_rest >= 5) {
-      lastSpokenWord = "";
-    }
+    kpiApertureEl.textContent = `${(ap * 100).toFixed(1)}%`;
+    kpiVelocityEl.textContent = `${vel.toFixed(3)}`;
 
-    // Update Recording Countdown if recording
+    // Update Recording Countdown if recording training data
     if (extractor.isRecording) {
       recCountdown.textContent = `${30 - extractor.recordingFrames.length}`;
+      return;
     }
 
-    // Continuous Real-Time Inference (active in Live Testing tab when not recording training data)
-    if (!extractor.isRecording && extractor.isBufferReady() && !isProcessingInference && (now - lastPredictTime) > 160) {
-      lastPredictTime = now;
-      runInference(extractor.getTemporalTensor());
+    // ─────────────────────────────────────────────────────────────
+    // ARTICULATORY GESTURE LIFECYCLE (ONE-SHOT EMISSION PER MOVEMENT)
+    // ─────────────────────────────────────────────────────────────
+    const isMouthOpen = ap > (neutral * 1.32);
+    const isMouthMoving = vel > 0.016;
+
+    if (gestureState === 'REST') {
+      if (isMouthOpen || isMouthMoving) {
+        // Speech onset detected
+        gestureState = 'ARTICULATING';
+        gestureFrames = 1;
+        peakAperture = ap;
+      }
+    } else if (gestureState === 'ARTICULATING') {
+      gestureFrames++;
+      if (ap > peakAperture) peakAperture = ap;
+
+      // Check if articulatory gesture completed (peak passed & closing towards rest, or 25+ frames)
+      const gestureCompleted = (gestureFrames >= 14 && (ap < peakAperture * 0.78 || vel < 0.010)) || (gestureFrames >= 28);
+
+      if (gestureCompleted) {
+        // Trigger ONE-SHOT inference
+        gestureState = 'LOCKOUT';
+        consecutiveRestCount = 0;
+        if (extractor.isBufferReady() && !isProcessingInference) {
+          runInference(extractor.getTemporalTensor());
+        }
+      }
+    } else if (gestureState === 'LOCKOUT') {
+      // Lockout state: Strictly prevent repeated triggering until mouth returns to rest for 8+ frames
+      if (!isMouthOpen && vel < 0.012) {
+        consecutiveRestCount++;
+        if (consecutiveRestCount >= 8) {
+          gestureState = 'REST'; // Unlocked for next speech movement!
+          consecutiveRestCount = 0;
+        }
+      } else {
+        consecutiveRestCount = 0;
+      }
     }
   }
 
   // --------------------------------------------------------------------------
-  // UNIFIED CAMERA CONTROLS (NATIVE WEBRTC + MEDIAPIPE PIPELINE)
+  // UNIFIED CAMERA CONTROLS
   // --------------------------------------------------------------------------
   btnCamera.addEventListener('click', async () => {
     if (!isCameraActive) {
@@ -324,7 +386,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
               await faceMesh.send({ image: videoEl });
             } catch (e) {
-              // frame drop graceful skip
+              // frame skip
             }
           }
           requestAnimationFrame(processVideoFrame);
@@ -367,12 +429,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnVoiceToggle.addEventListener('click', () => {
     isVoiceEnabled = !isVoiceEnabled;
+    if (!isVoiceEnabled) {
+      speechQueue.stopAll();
+    }
     btnVoiceToggle.textContent = isVoiceEnabled ? '🔊 Audio Voice: ON (Audible TTS)' : '🔇 Audio Voice: MUTED';
     btnVoiceToggle.style.color = isVoiceEnabled ? 'var(--cyan-bionic)' : 'var(--text-dim)';
   });
 
   // --------------------------------------------------------------------------
-  // INFERENCE ENGINE (REAL-TIME CONTINUOUS DECODER)
+  // INFERENCE ENGINE (REAL-TIME DECODER WITH ACTIVE MODEL CLASSES)
   // --------------------------------------------------------------------------
   async function runInference(tensor30x12) {
     if (isProcessingInference) return;
@@ -392,8 +457,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       kpiLatencyEl.textContent = `${data.latency_ms}ms`;
 
-      // Update Probability Bars
+      // Synchronize active model classes
+      if (data.model_classes && Array.isArray(data.model_classes)) {
+        activeModelClasses = data.model_classes;
+      }
+
+      // Update Probability Heatmap for trained classes
       if (data.probabilities) {
+        // Reset all bars first
+        document.querySelectorAll('.viseme-fill').forEach(bar => {
+          bar.style.width = '1%';
+          bar.style.background = 'rgba(255, 255, 255, 0.08)';
+        });
+        document.querySelectorAll('[id^="val-"]').forEach(val => {
+          val.textContent = '--';
+          val.style.color = 'var(--text-dim)';
+        });
+
         for (const [word, prob] of Object.entries(data.probabilities)) {
           const key = word.replace(/\s+/g, '');
           const barFill = document.getElementById(`bar-${key}`);
@@ -401,20 +481,22 @@ document.addEventListener('DOMContentLoaded', () => {
           if (barFill && barVal) {
             const pct = (prob * 100).toFixed(1);
             barFill.style.width = `${Math.max(pct, 2)}%`;
+            barFill.style.background = (word === data.predicted_word) ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, var(--cyan-bionic), var(--blue-glow))';
             barVal.textContent = `${pct}%`;
+            barVal.style.color = (word === data.predicted_word) ? '#34d399' : 'var(--cyan-bionic)';
           }
         }
       }
 
       const now = performance.now();
 
-      // Handle Active Speech Detection
-      if (data.is_active_speech && data.confidence >= 0.60 && data.predicted_word !== 'RESTING') {
-        const isDuplicateRecent = (data.predicted_word === lastSpokenWord && (now - lastSpokenTime) < 1000);
+      // Handle Active Speech Recognition (ONE-SHOT per gesture)
+      if (data.is_active_speech && data.confidence >= 0.55 && data.predicted_word !== 'RESTING') {
+        const isDuplicateRecent = (data.predicted_word === lastEmittedWord && (now - lastEmittedTime) < 2500);
 
         if (!isDuplicateRecent) {
-          lastSpokenWord = data.predicted_word;
-          lastSpokenTime = now;
+          lastEmittedWord = data.predicted_word;
+          lastEmittedTime = now;
 
           // 1. Update Billboard
           billboardCardEl.classList.add('active-speech');
@@ -431,12 +513,12 @@ document.addEventListener('DOMContentLoaded', () => {
           appendChatMessage('patient', data.synthesized_sentence, data.predicted_word, data.confidence);
           speechQueue.speak(data.synthesized_sentence, 'patient');
 
-          // 4. AI Care Partner Dialogue Response
+          // 4. AI Care Partner Dialogue Response (single delayed reply)
           if (data.ai_dialogue_reply) {
             setTimeout(() => {
               appendChatMessage('ai', data.ai_dialogue_reply);
               speechQueue.speak(data.ai_dialogue_reply, 'ai');
-            }, 320);
+            }, 350);
           }
 
           // 5. Contextual Next-Word Suggestions
@@ -447,7 +529,7 @@ document.addEventListener('DOMContentLoaded', () => {
           // 6. Clinical History Record
           addHistoryItem(data.predicted_word, data.synthesized_sentence, data.confidence);
 
-          // 7. FLUID BUFFER STRIDE: Discard completed word to enable next word recognition!
+          // 7. Fluid buffer stride
           extractor.flushBufferAfterDetection(6);
         }
 
@@ -455,7 +537,7 @@ document.addEventListener('DOMContentLoaded', () => {
         billboardCardEl.classList.remove('active-speech');
         if (data.predicted_word === 'RESTING') {
           billboardWordEl.textContent = 'RESTING';
-          confidenceBadgeEl.textContent = 'Awaiting Movement';
+          confidenceBadgeEl.textContent = 'Resting Baseline';
         }
       }
 
@@ -606,7 +688,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const slotEl = document.getElementById(`slot-${cleanDir}-${nextSlot}`);
     if (slotEl) slotEl.classList.add('current');
 
-    // 1-second prepare then record
     recordingIndicator.style.display = 'block';
     recordingIndicator.classList.add('recording-indicator-hud');
 
@@ -657,7 +738,6 @@ document.addEventListener('DOMContentLoaded', () => {
       modalCurrentSampleNum.textContent = sampleIdx;
       modalInstruction.textContent = `Get ready for sample ${sampleIdx} of ${REQUIRED_SAMPLES}...`;
 
-      // 3-second countdown
       for (let c = 3; c >= 1; c--) {
         if (cancelRecordingFlag) break;
         modalCountdown.textContent = c;
@@ -685,7 +765,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (cancelRecordingFlag) break;
 
-      // Save sample to backend
       try {
         const res = await fetch('/api/record_sample', {
           method: 'POST',
@@ -750,7 +829,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Object.keys(wordSampleCounts).forEach(w => {
           updateCardSlotsUI(w, 0);
         });
-        alert(`✅ All trained boxes are now completely empty! (Wiped ${data.deleted_count} files). You can now record 10 samples per word.`);
+        alert(`✅ All trained boxes are now completely empty! You can now record 10 samples per word.`);
       }
     } catch (e) {
       alert('Error resetting dataset: ' + e.message);
@@ -781,7 +860,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const cleanDir = phrase.replace(/\s+/g, '_');
         const cleanKey = phrase.replace(/\s+/g, '');
 
-        // Add Card to Studio Grid if not present
         if (!document.getElementById(`card-${cleanDir}`)) {
           const card = document.createElement('div');
           card.className = 'word-card-studio';
@@ -817,7 +895,6 @@ document.addEventListener('DOMContentLoaded', () => {
           wordSampleCounts[phrase] = 0;
         }
 
-        // Add to heatmap if not present
         const heatmapGrid = document.getElementById('visemeBarsGrid');
         if (heatmapGrid && !document.getElementById(`bar-${cleanKey}`)) {
           const item = document.createElement('div');
@@ -825,7 +902,7 @@ document.addEventListener('DOMContentLoaded', () => {
           item.innerHTML = `
             <div class="viseme-name-row">
               <span title="${phrase}">${phrase}</span>
-              <span id="val-${cleanKey}" style="color: var(--cyan-bionic);">0.0%</span>
+              <span id="val-${cleanKey}" style="color: var(--cyan-bionic);">--</span>
             </div>
             <div class="viseme-track">
               <div class="viseme-fill" id="bar-${cleanKey}"></div>
@@ -873,6 +950,11 @@ document.addEventListener('DOMContentLoaded', () => {
         epochProgressValAcc.textContent = `Best Val Acc: ${r.best_val_acc}%`;
         trainStatusBanner.className = 'train-status-pill ready';
         trainStatusBanner.innerHTML = `<span>🎉 <strong>Model Trained for 100 Epochs!</strong> Val Accuracy: <strong>${r.best_val_acc}%</strong> across ${r.num_classes} classes. Model hot-reloaded!</span>`;
+
+        if (r.vocabulary) {
+          activeModelClasses = r.vocabulary;
+        }
+
         alert(`Training Complete!\n100 Epochs Trained.\nBest Validation Accuracy: ${r.best_val_acc}%\nClasses: ${r.vocabulary.join(', ')}\nModel weights hot-reloaded!`);
       } else {
         epochProgressBar.style.width = '0%';
@@ -966,22 +1048,11 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function runInteractiveConversationDemo() {
-    // Switch to Live tab to show visual results
     const liveTabBtn = document.querySelector('.mode-tab-btn[data-tab="live"]');
     if (liveTabBtn) liveTabBtn.click();
 
-    // Turn 1: "PRINCE KUMAR"
-    await runWordSimulation("PRINCE KUMAR");
-
-    // Turn 2: "HELP" after 2.6 seconds
-    setTimeout(async () => {
-      await runWordSimulation("HELP");
-
-      // Turn 3: "THANK YOU" after another 2.8 seconds
-      setTimeout(async () => {
-        await runWordSimulation("THANK YOU");
-      }, 2800);
-    }, 2600);
+    // Turn 1: "DOCTOR"
+    await runWordSimulation("DOCTOR");
   }
 
   if (btnSimulate) btnSimulate.addEventListener('click', runInteractiveConversationDemo);
@@ -995,13 +1066,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --------------------------------------------------------------------------
-  // INITIAL DATASET LOADING
+  // INITIAL DATASET & MODEL CLASS LOADING
   // --------------------------------------------------------------------------
   async function loadInitialStats() {
     try {
       const res = await fetch('/api/dataset_stats');
       const data = await res.json();
       const realCounts = data.real_recordings || {};
+
+      if (data.model_classes && Array.isArray(data.model_classes)) {
+        activeModelClasses = data.model_classes;
+      }
 
       Object.entries(realCounts).forEach(([word, count]) => {
         updateCardSlotsUI(word, count);

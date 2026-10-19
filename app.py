@@ -52,23 +52,64 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 DEVICE = torch.device("cpu") if HAS_TORCH else None
 WEIGHTS_PATH = os.path.join(MODELS_DIR, "lip_model.pth")
 NPZ_WEIGHTS_PATH = os.path.join(MODELS_DIR, "lip_model_weights.npz")
+MODEL_CLASSES_FILE = os.path.join(MODELS_DIR, "model_classes.json")
+
+def get_trained_model_classes(expected_num_classes: Optional[int] = None) -> List[str]:
+    """Loads the exact class mapping for the trained neural model."""
+    if os.path.exists(MODEL_CLASSES_FILE):
+        try:
+            with open(MODEL_CLASSES_FILE, "r", encoding="utf-8") as f:
+                classes = json.load(f)
+                if isinstance(classes, list) and len(classes) > 0:
+                    if expected_num_classes is None or len(classes) == expected_num_classes:
+                        return classes
+        except Exception:
+            pass
+
+    if os.path.exists(NPZ_WEIGHTS_PATH):
+        try:
+            w = np.load(NPZ_WEIGHTS_PATH)
+            if "model_classes" in w:
+                mc = w["model_classes"].tolist()
+                if expected_num_classes is None or len(mc) == expected_num_classes:
+                    return mc
+        except Exception:
+            pass
+
+    vocab = get_dynamic_vocabulary()
+    if expected_num_classes is not None and expected_num_classes <= len(vocab):
+        return vocab[:expected_num_classes]
+    return vocab
 
 active_vocabulary: List[str] = get_dynamic_vocabulary()
+active_model_classes: List[str] = get_trained_model_classes()
 torch_model = None
 numpy_model: Optional[NumpyVisemeNet] = None
 REQUIRED_SAMPLES_PER_WORD = 10
 
 
 def initialize_or_reload_model():
-    global torch_model, numpy_model, active_vocabulary
+    global torch_model, numpy_model, active_vocabulary, active_model_classes
     active_vocabulary = get_dynamic_vocabulary()
-    num_classes = len(active_vocabulary)
+
+    # Determine num_classes from weights file if present
+    detected_num_classes = None
+    if os.path.exists(NPZ_WEIGHTS_PATH):
+        try:
+            w = np.load(NPZ_WEIGHTS_PATH)
+            if "fc2.weight" in w:
+                detected_num_classes = w["fc2.weight"].shape[0]
+        except Exception:
+            pass
+
+    active_model_classes = get_trained_model_classes(detected_num_classes)
+    num_classes = len(active_model_classes)
 
     # 1. Pure NumPy model (ideal for serverless Vercel, zero CUDA bloat)
     if os.path.exists(NPZ_WEIGHTS_PATH):
         try:
             numpy_model = NumpyVisemeNet(NPZ_WEIGHTS_PATH)
-            print(f"[NUMPY INFERENCE] Loaded weights for {num_classes} classes from {NPZ_WEIGHTS_PATH}")
+            print(f"[NUMPY INFERENCE] Loaded weights for {num_classes} classes: {active_model_classes}")
         except Exception as e:
             print(f"[NUMPY WARNING] Could not load .npz weights: {e}")
 
@@ -80,7 +121,7 @@ def initialize_or_reload_model():
                 state_dict = torch.load(WEIGHTS_PATH, map_location=DEVICE)
                 if state_dict["fc2.weight"].shape[0] == num_classes:
                     torch_model.load_state_dict(state_dict)
-                    print(f"[TORCH LOADED] Loaded PyTorch weights for {num_classes} classes")
+                    print(f"[TORCH LOADED] Loaded PyTorch weights for {num_classes} classes: {active_model_classes}")
             torch_model.eval()
         except Exception as e:
             print(f"[TORCH WARNING] Model init: {e}")
@@ -188,11 +229,11 @@ async def predict_silent_speech(req: TemporalTensorRequest):
 
     pred_idx = int(np.argmax(probs))
     confidence = float(probs[pred_idx])
-    pred_word = active_vocabulary[pred_idx] if pred_idx < len(active_vocabulary) else "RESTING"
+    pred_word = active_model_classes[pred_idx] if pred_idx < len(active_model_classes) else "RESTING"
 
     inference_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
     agent_output = agent_synthesizer.process_decoded_word(pred_word, confidence)
-    prob_dict = {active_vocabulary[i]: round(float(probs[i]), 4) for i in range(min(len(active_vocabulary), len(probs)))}
+    prob_dict = {active_model_classes[i]: round(float(probs[i]), 4) for i in range(min(len(active_model_classes), len(probs)))}
 
     return JSONResponse({
         "status": "success",
@@ -208,7 +249,8 @@ async def predict_silent_speech(req: TemporalTensorRequest):
         "compound_detected": agent_output["compound_detected"],
         "probabilities": prob_dict,
         "latency_ms": inference_latency_ms,
-        "attention_weights": attn_list
+        "attention_weights": attn_list,
+        "model_classes": active_model_classes
     })
 
 
@@ -219,6 +261,7 @@ async def predict_silent_speech(req: TemporalTensorRequest):
 async def dataset_stats():
     stats = get_dataset_statistics()
     stats["required_per_word"] = REQUIRED_SAMPLES_PER_WORD
+    stats["model_classes"] = active_model_classes
     return JSONResponse(stats)
 
 
