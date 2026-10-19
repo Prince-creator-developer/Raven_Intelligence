@@ -364,11 +364,13 @@ async def trigger_training():
         }, status_code=400)
 
     try:
-        train_result = train_custom_100_epochs(epochs=100)
+        train_result = train_custom_100_epochs()
         initialize_or_reload_model()
         return JSONResponse({
             "status": "success",
-            "training_result": train_result
+            "training_result": train_result,
+            "vocabulary": active_model_classes,
+            "model_classes": active_model_classes
         })
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)

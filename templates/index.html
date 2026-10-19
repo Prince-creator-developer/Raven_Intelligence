@@ -1226,48 +1226,60 @@ button {
             RESTING
           </div>
 
-          <!-- Agentic Natural Language Expansion -->
+          <!-- Clean Spoken Speech Output -->
           <div class="synthesized-box">
             <div class="synthesized-label">
-              <span>✨ Agentic Bionic Speech Output (Spoken Aloud):</span>
+              <span>🔊 Direct Spoken Articulation:</span>
             </div>
-            <div class="synthesized-text" id="synthesizedText">
-              "Mouth a silent word in front of the camera to synthesize speech."
+            <div class="synthesized-text" id="synthesizedText" style="font-weight: 700; color: #38bdf8; font-style: normal; font-size: 1.15rem;">
+              "Awaiting silent articulation..."
             </div>
           </div>
         </div>
 
-        <!-- Continuous Sentence Accumulator Banner -->
-        <div class="continuous-sentence-banner" id="continuousBanner">
-          <span style="font-size: 1.1rem;">💬</span>
-          <div style="flex: 1;">
-            <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; display: block; color: #a7f3d0;">Ongoing Articulatory Sentence Stream:</span>
-            <span id="continuousSentenceText" style="font-weight: 700; color: #f8fafc; font-size: 0.88rem;">"Awaiting continuous speech input..."</span>
+        <!-- Ongoing Articulatory Sentence Stream with Clear & Replay Controls -->
+        <div class="continuous-sentence-banner" id="continuousBanner" style="justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px; flex: 1;">
+            <span style="font-size: 1.2rem;">💬</span>
+            <div style="flex: 1;">
+              <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; display: block; color: #a7f3d0;">
+                Continuous Spoken Sentence Stream:
+              </span>
+              <span id="continuousSentenceText" style="font-weight: 700; color: #f8fafc; font-size: 1rem; font-family: var(--font-mono);">
+                (Awaiting speech...)
+              </span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 6px;">
+            <button class="btn-bionic btn-secondary" id="btnSpeakSentence" style="padding: 6px 10px; font-size: 0.75rem;" title="Speak full accumulated sentence">
+              <span>🔊 Speak</span>
+            </button>
+            <button class="btn-bionic btn-secondary" id="btnClearSentence" style="padding: 6px 10px; font-size: 0.75rem;" title="Clear sentence accumulator">
+              <span>✕ Clear</span>
+            </button>
           </div>
         </div>
 
-        <!-- Real-Time Continuous Two-Way Conversation Stream -->
+        <!-- Clean Clinical Speech Activity Feed -->
         <div class="conversation-stream-card">
           <div class="conversation-header">
             <div class="conversation-title">
-              <span>🗣️ Live Conversational Dialogue Stream</span>
+              <span>📋 Live Speech Activity Stream</span>
             </div>
-            <span style="font-size: 0.7rem; font-family: var(--font-mono); color: var(--green-active);">● Interactive Care Agent Active</span>
+            <span style="font-size: 0.7rem; font-family: var(--font-mono); color: var(--green-active);">● Neural Viseme Decoder Active</span>
           </div>
 
           <div class="chat-scroll-area" id="chatScrollArea">
-            <div class="chat-bubble chat-ai">
+            <div class="chat-bubble chat-patient" style="align-self: flex-start; max-width: 100%;">
               <div class="chat-meta">
-                <span>🤖 AI Care Partner</span>
-                <span>Online</span>
+                <span>SYSTEM</span>
+                <span>Active</span>
               </div>
-              <div>Hello! I am your real-time SilentVoice conversational partner. Speak silently with your mouth, and I will understand and reply continuously in real-time.</div>
+              <div>SilentVoice AI Engine ready. Mouth your trained words silently in front of the camera — they will be decoded cleanly without repetitive chatter.</div>
             </div>
           </div>
         </div>
 
-        <!-- Contextual Next-Word Suggestions Bar -->
-        <div class="suggestions-box" id="suggestionsBox">
           <div class="suggestions-title">
             <span>⚡ Contextual Next-Word Suggestions (Click or Mouth silently):</span>
           </div>

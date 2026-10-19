@@ -150,6 +150,35 @@ def add_custom_phrase(phrase: str) -> str:
     return folder_to_display_phrase(clean_name)
 
 
+def ensure_resting_baseline(num_samples: int = 10):
+    """
+    Ensures dataset/RESTING has at least num_samples resting baseline files
+    so the classifier always has a negative closed-mouth anchor to contrast against spoken words.
+    """
+    folder_path = os.path.join(DATASET_DIR, "RESTING")
+    os.makedirs(folder_path, exist_ok=True)
+    existing = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
+    if len(existing) < num_samples:
+        seq_len = 30
+        for i in range(len(existing), num_samples):
+            # Quiet neutral mouth: aperture ~ 0.005, w ~ 0.45, zero velocity
+            h = np.ones(seq_len, dtype=np.float32) * 0.005 + np.random.normal(0, 0.0005, seq_len).astype(np.float32)
+            w = np.ones(seq_len, dtype=np.float32) * 0.45 + np.random.normal(0, 0.005, seq_len).astype(np.float32)
+            z = np.zeros(seq_len, dtype=np.float32)
+            aspect = h / (w + 1e-5)
+            outer_h = h * 1.5 + 0.08
+            upper_thick = np.ones(seq_len, dtype=np.float32) * 0.04
+            lower_thick = np.ones(seq_len, dtype=np.float32) * 0.05
+            corner_angle = np.zeros(seq_len, dtype=np.float32)
+            area = np.pi * (h / 2.0) * (w / 2.0)
+            dh = np.zeros(seq_len, dtype=np.float32)
+            dw = np.zeros(seq_len, dtype=np.float32)
+            d2h = np.zeros(seq_len, dtype=np.float32)
+
+            feat = np.stack([h, w, aspect, outer_h, upper_thick, lower_thick, corner_angle, area, dh, dw, d2h, z], axis=-1)
+            np.save(os.path.join(folder_path, f"sample_rest_{i+1:02d}.npy"), feat.astype(np.float32))
+
+
 def save_user_sample(phrase: str, tensor_data: List[List[float]], sample_num: Optional[int] = None) -> str:
     """
     Saves a captured 30x12 kinematic trajectory into dataset/<PHRASE>/sample_<num>_<timestamp>.npy
