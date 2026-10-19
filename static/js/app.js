@@ -72,7 +72,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const chatScrollArea = document.getElementById('chatScrollArea');
   const suggestionsChips = document.getElementById('suggestionsChips');
   const historyListEl = document.getElementById('historyList');
-  const lipStatePill = document.getElementById('lipStatePill');
 
   // Application State
   let isCameraActive = false;
@@ -91,17 +90,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let wordSampleCounts = {};
   let sentenceWords = [];
 
-  // Fluid Articulatory Gesture Lifecycle (Zero Repeat Echo, Continuous Flow)
-  let gestureState = 'REST'; // 'REST' | 'ARTICULATING' | 'COOLDOWN'
+  // Articulatory Gesture Lifecycle (Zero Repeat Noise, Rapid Unlocking Flow)
+  let gestureState = 'REST'; // 'REST' | 'ARTICULATING' | 'LOCKOUT'
   let gestureFrames = 0;
   let peakAperture = 0;
-  let cooldownFrames = 0;
+  let consecutiveRestCount = 0;
   let lastEmittedWord = "";
   let lastEmittedTime = 0;
 
   function resizeCanvas() {
-    canvasEl.width = videoEl.clientWidth || 500;
-    canvasEl.height = videoEl.clientHeight || 380;
+    canvasEl.width = videoEl.videoWidth || videoEl.clientWidth || 640;
+    canvasEl.height = videoEl.videoHeight || videoEl.clientHeight || 480;
   }
   window.addEventListener('resize', resizeCanvas);
 
@@ -217,54 +216,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const LIP_OUTER = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
   const LIP_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78];
 
-  function drawBionicLipMesh(landmarks, feat = null) {
+  function drawBionicLipMesh(landmarks, isLipActive = false) {
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     if (!landmarks) return;
 
     const w = canvasEl.width;
     const h = canvasEl.height;
 
-    const p13 = landmarks[13]; // Upper inner lip center
-    const p14 = landmarks[14]; // Lower inner lip center
-
-    // Direct pixel separation of inner anchor dots 13 and 14
-    const innerDistPx = (p13 && p14) ? Math.hypot((p13.x - p14.x) * w, (p13.y - p14.y) * h) : 0;
-    const innerDyPx = (p13 && p14) ? Math.abs(p13.y - p14.y) * h : 0;
-
-    const vel = (feat && feat.metrics) ? feat.metrics.velocity : 0;
-    const ap = (feat && feat.metrics) ? feat.metrics.vertical_aperture : 0;
-    const neutral = (extractor && extractor.calibratedNeutralH) ? extractor.calibratedNeutralH : 0.045;
-
-    // PHYSICAL REALITY:
-    // Lips are active whenever:
-    // 1) Inner anchor dots 13 & 14 separate (innerDyPx >= 3.6px or innerDistPx >= 4.0px or ap > neutral * 1.15)
-    // 2) OR lips are actively moving (velocity > 0.008)
-    // 3) OR gesture state is currently articulating
-    const isSeparated = innerDyPx >= 3.6 || innerDistPx >= 4.0 || ap > (neutral * 1.15);
-    const isMoving = vel > 0.008;
-    const isLipsActive = isSeparated || isMoving || (gestureState === 'ARTICULATING');
-
-    // Outer Lip Boundary Color:
-    // MUST BE GREEN (#10b981) whenever mouth moves or inner dots separate!
-    // Blue (#00f2fe) ONLY when lips are completely closed/resting!
-    // Red (#ef4444) when actively recording dataset samples!
-    let strokeColor = '#00f2fe';
-    let glowColor = '#00f2fe';
-    let lineWidth = 2.4;
-
-    if (extractor.isRecording) {
-      strokeColor = '#ef4444';
-      glowColor = '#ef4444';
-      lineWidth = 3.2;
-    } else if (isLipsActive) {
-      strokeColor = '#10b981'; // VIBRANT EMERALD GREEN ON MOVEMENT & OPENING
-      glowColor = '#10b981';
-      lineWidth = 3.2;
-    } else {
-      strokeColor = '#00f2fe'; // BIONIC BLUE/CYAN ONLY AT REST
-      glowColor = '#00f2fe';
-      lineWidth = 2.2;
-    }
+    // Green whenever lips are open or moving; Blue when closed/resting; Red when recording
+    const strokeColor = extractor.isRecording ? '#ef4444' : (isLipActive ? '#10b981' : '#00f2fe');
 
     // Outer Lip Contour
     ctx.beginPath();
@@ -276,9 +236,9 @@ document.addEventListener('DOMContentLoaded', () => {
       else ctx.lineTo(x, y);
     }
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = lineWidth;
-    ctx.shadowColor = glowColor;
-    ctx.shadowBlur = 14;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = strokeColor;
+    ctx.shadowBlur = 12;
     ctx.stroke();
 
     // Inner Lip Contour
@@ -290,9 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = isLipsActive ? '#34d399' : '#a855f7';
+    ctx.strokeStyle = '#a855f7';
     ctx.lineWidth = 2.0;
-    ctx.shadowColor = isLipsActive ? '#34d399' : '#a855f7';
+    ctx.shadowColor = '#a855f7';
     ctx.shadowBlur = 8;
     ctx.stroke();
 
@@ -307,68 +267,15 @@ document.addEventListener('DOMContentLoaded', () => {
       ctx.fill();
     });
 
-    // INNER ANCHOR DOTS (13 & 14) - Center of Upper & Lower Inner Lips
-    if (p13 && p14) {
-      const x13 = p13.x * w;
-      const y13 = p13.y * h;
-      const x14 = p14.x * w;
-      const y14 = p14.y * h;
-
-      if (isLipsActive) {
-        // Bright Emerald Green Dots when Separated or Moving
-        ctx.fillStyle = '#10b981';
-        ctx.shadowColor = '#10b981';
-        ctx.shadowBlur = 12;
-
-        ctx.beginPath();
-        ctx.arc(x13, y13, 5.0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(x14, y14, 5.0, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Dynamic aperture connecting guide
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.75)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.moveTo(x13, y13);
-        ctx.lineTo(x14, y14);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.shadowBlur = 0;
-      } else {
-        // Resting / Closed Cyan Dots touching
-        ctx.fillStyle = '#00f2fe';
-        ctx.shadowColor = '#00f2fe';
-        ctx.shadowBlur = 6;
-
-        ctx.beginPath();
-        ctx.arc(x13, y13, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.beginPath();
-        ctx.arc(x14, y14, 3.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      }
-    }
-
-    // Update Live HUD Pill
-    if (lipStatePill) {
-      if (isLipsActive) {
-        lipStatePill.textContent = '● Moving / Open (Green)';
-        lipStatePill.style.color = '#34d399';
-        lipStatePill.style.borderColor = '#10b981';
-        lipStatePill.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.4)';
-      } else {
-        lipStatePill.textContent = '● Resting / Closed (Blue)';
-        lipStatePill.style.color = '#00f2fe';
-        lipStatePill.style.borderColor = 'rgba(0, 242, 254, 0.4)';
-        lipStatePill.style.boxShadow = 'none';
-      }
-    }
+    // Inner Anchor Dots: 13 (upper inner lip) & 14 (lower inner lip)
+    // Turn bright green when separated/moving, white when touching
+    [13, 14].forEach(idx => {
+      const pt = landmarks[idx];
+      ctx.fillStyle = isLipActive ? '#10b981' : '#ffffff';
+      ctx.beginPath();
+      ctx.arc(pt.x * w, pt.y * h, isLipActive ? 4.5 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -394,12 +301,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const feat = extractor.extractFrameFeatures(latestLandmarks, videoEl.videoWidth || 640, videoEl.videoHeight || 480);
     if (!feat) return;
 
-    // Render Bionic Lip Mesh with live kinematics
-    drawBionicLipMesh(latestLandmarks, feat);
-
     const ap = feat.metrics.vertical_aperture;
     const vel = feat.metrics.velocity;
-    const neutral = extractor.calibratedNeutralH || 0.045;
+    const neutral = extractor.calibratedNeutralH || 0.05;
+
+    // Physical Movement & Inner Dot Separation Detection:
+    // Landmark 13 and 14 separation (ap > neutral * 1.25) or movement velocity:
+    const isMouthOpen = ap > (neutral * 1.25);
+    const isMouthMoving = vel > 0.014;
+    const isLipActive = isMouthOpen || isMouthMoving || (gestureState === 'ARTICULATING');
+
+    // Render Bionic Lip Mesh with immediate green/blue color
+    drawBionicLipMesh(latestLandmarks, isLipActive);
 
     kpiApertureEl.textContent = `${(ap * 100).toFixed(1)}%`;
     kpiVelocityEl.textContent = `${vel.toFixed(3)}`;
@@ -411,22 +324,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // CONTINUOUS ARTICULATORY SENTENCE LIFECYCLE (FLOW ACROSS WORDS)
+    // ARTICULATORY GESTURE LIFECYCLE (ACCURATE SPEECH FLOW)
     // ─────────────────────────────────────────────────────────────
-    const p13 = latestLandmarks[13];
-    const p14 = latestLandmarks[14];
-    const w = canvasEl.width;
-    const h = canvasEl.height;
-    const innerDyPx = (p13 && p14) ? Math.abs(p13.y - p14.y) * h : 0;
-    const innerDistPx = (p13 && p14) ? Math.hypot((p13.x - p14.x) * w, (p13.y - p14.y) * h) : 0;
-
-    const isInnerSeparated = innerDyPx >= 3.6 || innerDistPx >= 4.0 || ap > (neutral * 1.15);
-    const isMoving = vel > 0.008;
-    const isLipsActive = isInnerSeparated || isMoving;
-
     if (gestureState === 'REST') {
-      if (isLipsActive) {
-        // Speech onset: lips separated or started moving
+      if (isMouthOpen || isMouthMoving) {
+        // Speech onset
         gestureState = 'ARTICULATING';
         gestureFrames = 1;
         peakAperture = ap;
@@ -435,31 +337,31 @@ document.addEventListener('DOMContentLoaded', () => {
       gestureFrames++;
       if (ap > peakAperture) peakAperture = ap;
 
-      // Word / gesture completion cue:
-      // Minimum duration 12 frames (~400ms) with closure/velocity dip, OR maximum chunk duration 26 frames (~850ms)
-      const gestureCompleted = (gestureFrames >= 12 && (ap < peakAperture * 0.78 || vel < 0.010)) || (gestureFrames >= 26);
+      // Complete word gesture when:
+      // Minimum duration 16 frames (~530ms) with closure/velocity dip, OR maximum window 28 frames (~930ms)
+      const gestureCompleted = (gestureFrames >= 16 && (ap < peakAperture * 0.75 || vel < 0.012)) || (gestureFrames >= 28);
 
       if (gestureCompleted) {
-        // Trigger inference for this word/chunk
+        // Trigger inference on complete 30-frame tensor
         if (extractor.isBufferReady() && !isProcessingInference) {
           runInference(extractor.getTemporalTensor());
         }
-
-        // Non-blocking transition cooldown: 5 frames (~160ms) to allow buffer stride
-        gestureState = 'COOLDOWN';
-        cooldownFrames = 5;
+        gestureState = 'LOCKOUT';
+        consecutiveRestCount = 0;
       }
-    } else if (gestureState === 'COOLDOWN') {
-      cooldownFrames--;
-      if (cooldownFrames <= 0) {
-        if (isLipsActive) {
-          // Continuous flow: lips are still open or mouthing the next word in flow!
-          gestureState = 'ARTICULATING';
-          gestureFrames = 1;
-          peakAperture = ap;
-        } else {
-          // Lips returned to closed resting
+    } else if (gestureState === 'LOCKOUT') {
+      // Rapid unlocking: only requires 3 frames (~100ms) of slight dip or rest
+      if (!isMouthOpen || vel < 0.012) {
+        consecutiveRestCount++;
+        if (consecutiveRestCount >= 3) {
+          gestureState = 'REST'; // Immediately ready for next word in continuous flow!
+          consecutiveRestCount = 0;
+        }
+      } else {
+        consecutiveRestCount++;
+        if (consecutiveRestCount >= 8) {
           gestureState = 'REST';
+          consecutiveRestCount = 0;
         }
       }
     }
@@ -631,8 +533,8 @@ document.addEventListener('DOMContentLoaded', () => {
           // 4. Clinical Speech Activity Stream
           appendSpeechLog(data.predicted_word, data.confidence);
 
-          // 5. Fluid buffer stride (keeps 4 frames transition context for immediate next word)
-          extractor.flushBufferAfterDetection(4);
+          // 5. Fluid buffer stride (preserves transition context for smooth continuous flow)
+          extractor.flushBufferAfterDetection(6);
         }
 
       } else {
@@ -1165,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const rx = (w * canvasEl.width) / 2.2;
       const ry = Math.max(h * canvasEl.height * 1.3, 10);
 
-      // Outer Lip - Green during simulated speech movement!
+      // Outer Lip
       const isSimMoving = Math.abs(trajectory[frame][8]) > 0.005 || h > 0.055;
       ctx.beginPath();
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
@@ -1178,24 +1080,18 @@ document.addEventListener('DOMContentLoaded', () => {
       // Inner
       ctx.beginPath();
       ctx.ellipse(cx, cy, rx * 0.65, Math.max(ry * 0.55, 5), 0, 0, Math.PI * 2);
-      ctx.strokeStyle = isSimMoving ? '#34d399' : '#a855f7';
+      ctx.strokeStyle = '#a855f7';
       ctx.lineWidth = 2;
-      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowColor = '#a855f7';
       ctx.shadowBlur = 8;
       ctx.stroke();
 
       // Anchor dots
-      ctx.fillStyle = isSimMoving ? '#10b981' : '#00f2fe';
+      ctx.fillStyle = isSimMoving ? '#10b981' : '#ffffff';
       ctx.beginPath();
-      ctx.arc(cx, cy - ry * 0.55, 4.5, 0, Math.PI * 2);
-      ctx.arc(cx, cy + ry * 0.55, 4.5, 0, Math.PI * 2);
+      ctx.arc(cx, cy - ry * 0.55, 4.0, 0, Math.PI * 2);
+      ctx.arc(cx, cy + ry * 0.55, 4.0, 0, Math.PI * 2);
       ctx.fill();
-
-      if (lipStatePill) {
-        lipStatePill.textContent = isSimMoving ? '● Moving / Open (Green)' : '● Resting / Closed (Blue)';
-        lipStatePill.style.color = isSimMoving ? '#34d399' : '#00f2fe';
-        lipStatePill.style.borderColor = isSimMoving ? '#10b981' : 'rgba(0, 242, 254, 0.4)';
-      }
 
       ctx.shadowBlur = 0;
       frame++;
