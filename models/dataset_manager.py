@@ -2,7 +2,8 @@ import os
 import re
 import json
 import time
-from typing import Dict, List, Tuple
+import shutil
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 
 # Optional PyTorch for dataset loading during local training
@@ -23,15 +24,17 @@ DEFAULT_VOCABULARY = [
     "RESTING",
     "HELP",
     "WATER",
-    "YES",
-    "NO",
     "DOCTOR",
     "PAIN",
+    "PRINCE KUMAR",
     "THANK YOU",
-    "TIRED",
-    "NURSE",
+    "YES",
+    "NO",
     "BREATHE",
-    "MEDICINE"
+    "NURSE",
+    "MEDICINE",
+    "TIRED",
+    "I WANT WATER"
 ]
 
 
@@ -49,19 +52,8 @@ def folder_to_display_phrase(folder_name: str) -> str:
 def get_dynamic_vocabulary() -> List[str]:
     """
     Scans the dataset directory or loads cached vocab.json.
-    100% read-only safe for serverless runtimes (Vercel / AWS Lambda).
+    100% read-only safe for serverless runtimes.
     """
-    # 1. Prefer reading existing vocab.json (matches model weights)
-    if os.path.exists(VOCAB_FILE):
-        try:
-            with open(VOCAB_FILE, "r", encoding="utf-8") as f:
-                v = json.load(f)
-                if isinstance(v, list) and len(v) > 0:
-                    return v
-        except Exception:
-            pass
-
-    # 2. If dataset directory exists, scan for additional folders
     vocab_list = []
     if os.path.exists(DATASET_DIR):
         try:
@@ -80,14 +72,24 @@ def get_dynamic_vocabulary() -> List[str]:
             pass
 
     if not vocab_list:
+        if os.path.exists(VOCAB_FILE):
+            try:
+                with open(VOCAB_FILE, "r", encoding="utf-8") as f:
+                    v = json.load(f)
+                    if isinstance(v, list) and len(v) > 0:
+                        vocab_list = v
+            except Exception:
+                pass
+
+    if not vocab_list:
         vocab_list = list(DEFAULT_VOCABULARY)
 
-    # 3. Only attempt to write if directory is writable
+    # Save cached vocab.json if writable
     try:
         with open(VOCAB_FILE, "w", encoding="utf-8") as f:
             json.dump(vocab_list, f, indent=2)
     except Exception:
-        pass  # Read-only serverless environment
+        pass
 
     return vocab_list
 
@@ -105,7 +107,6 @@ def synthesize_custom_trajectory(phrase: str, seq_len: int = 30) -> np.ndarray:
     w = np.ones(seq_len) * 0.45
     z = np.zeros(seq_len)
 
-    # Distribute syllable peaks
     for i in range(n_words):
         t_center = (i + 1) / (n_words + 1)
         sigma = 0.08 / np.sqrt(n_words)
@@ -133,8 +134,7 @@ def synthesize_custom_trajectory(phrase: str, seq_len: int = 30) -> np.ndarray:
 def add_custom_phrase(phrase: str) -> str:
     """
     Creates a new dedicated folder for ANY custom word or full sentence.
-    Seeds 5 initial baseline trajectories so it is immediately trainable,
-    which will be enriched as the user records their actual mouth movements.
+    Leaves the folder completely empty (0 files) so the user can record their 10 samples.
     """
     clean_name = clean_folder_name(phrase)
     if not clean_name:
@@ -143,27 +143,16 @@ def add_custom_phrase(phrase: str) -> str:
     folder_path = os.path.join(DATASET_DIR, clean_name)
     try:
         os.makedirs(folder_path, exist_ok=True)
-        # Check if folder has files; if not, seed 5 baseline files
-        existing = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-        if len(existing) == 0:
-            base_feat = synthesize_custom_trajectory(phrase)
-            for i in range(5):
-                jitter = base_feat.copy()
-                shift = np.random.randint(-1, 2)
-                jitter = np.roll(jitter, shift, axis=0)
-                jitter[:, :6] *= np.random.uniform(0.95, 1.05)
-                jitter += np.random.normal(0, 0.003, jitter.shape)
-                np.save(os.path.join(folder_path, f"baseline_{i+1:03d}.npy"), jitter.astype(np.float32))
     except (OSError, PermissionError):
-        pass  # Read-only serverless environment (Vercel)
+        pass
 
-    get_dynamic_vocabulary() # Refresh vocab.json
+    get_dynamic_vocabulary()  # Refresh vocab.json
     return folder_to_display_phrase(clean_name)
 
 
-def save_user_sample(phrase: str, tensor_data: List[List[float]]) -> str:
+def save_user_sample(phrase: str, tensor_data: List[List[float]], sample_num: Optional[int] = None) -> str:
     """
-    Saves a 30x12 kinematic trajectory into dataset/<PHRASE>/sample_<timestamp>.npy
+    Saves a captured 30x12 kinematic trajectory into dataset/<PHRASE>/sample_<num>_<timestamp>.npy
     """
     folder_name = clean_folder_name(phrase)
     arr = np.array(tensor_data, dtype=np.float32)
@@ -171,40 +160,69 @@ def save_user_sample(phrase: str, tensor_data: List[List[float]]) -> str:
         raise ValueError(f"Expected shape (30, 12), got {arr.shape}")
 
     timestamp = int(time.time() * 1000)
+    tag = f"sample_{sample_num:02d}_{timestamp}.npy" if sample_num else f"sample_{timestamp}.npy"
+
     try:
         folder_path = os.path.join(DATASET_DIR, folder_name)
         os.makedirs(folder_path, exist_ok=True)
-        file_path = os.path.join(folder_path, f"sample_{timestamp}.npy")
+        file_path = os.path.join(folder_path, tag)
         np.save(file_path, arr)
         return file_path
     except (OSError, PermissionError):
-        # Fallback to /tmp in serverless environment
         tmp_folder = os.path.join("/tmp", "dataset", folder_name)
         os.makedirs(tmp_folder, exist_ok=True)
-        file_path = os.path.join(tmp_folder, f"sample_{timestamp}.npy")
+        file_path = os.path.join(tmp_folder, tag)
         np.save(file_path, arr)
         return file_path
+
+
+def clear_phrase_samples(phrase: str) -> int:
+    """Deletes all recording files for a specific phrase."""
+    folder_name = clean_folder_name(phrase)
+    folder_path = os.path.join(DATASET_DIR, folder_name)
+    deleted = 0
+    if os.path.exists(folder_path):
+        for f in os.listdir(folder_path):
+            if f.endswith(".npy"):
+                try:
+                    os.remove(os.path.join(folder_path, f))
+                    deleted += 1
+                except Exception:
+                    pass
+    return deleted
+
+
+def reset_entire_dataset() -> int:
+    """Empties all recorded .npy files from every folder in dataset/."""
+    deleted = 0
+    if os.path.exists(DATASET_DIR):
+        for root, dirs, files in os.walk(DATASET_DIR):
+            for f in files:
+                if f.endswith(".npy"):
+                    try:
+                        os.remove(os.path.join(root, f))
+                        deleted += 1
+                    except Exception:
+                        pass
+    return deleted
 
 
 def get_dataset_statistics() -> Dict:
     vocab = get_dynamic_vocabulary()
     per_word_counts = {}
-    real_recordings = {}  # Only user-recorded sample_*.npy files (no baselines)
+    real_recordings = {}
     total_samples = 0
 
     for phrase in vocab:
         folder_name = clean_folder_name(phrase)
         folder_path = os.path.join(DATASET_DIR, folder_name)
         if os.path.exists(folder_path):
-            all_files  = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-            real_files = [f for f in all_files if f.startswith("sample_")]
-            count = len(all_files)
-            real  = len(real_files)
+            files = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
+            count = len(files)
         else:
             count = 0
-            real  = 0
         per_word_counts[phrase] = count
-        real_recordings[phrase] = real
+        real_recordings[phrase] = count
         total_samples += count
 
     return {
@@ -218,12 +236,28 @@ def get_dataset_statistics() -> Dict:
 
 class UserKinematicDataset(Dataset):
     """
-    Loads all recorded .npy files from ALL folders in dataset/ with biological augmentation.
+    Loads all recorded .npy files from folders in dataset/ with biological augmentation.
+    Filters to only words that have at least 1 recorded sample.
     """
-    def __init__(self, augment_factor: int = 5):
+    def __init__(self, augment_factor: int = 8, active_words: Optional[List[str]] = None):
         self.samples = []
         self.labels = []
-        vocab = get_dynamic_vocabulary()
+
+        all_vocab = get_dynamic_vocabulary()
+        if active_words is not None:
+            vocab = [w for w in active_words if w in all_vocab]
+        else:
+            # Only include words that actually have at least 1 sample recorded!
+            vocab = []
+            for phrase in all_vocab:
+                folder_name = clean_folder_name(phrase)
+                folder_path = os.path.join(DATASET_DIR, folder_name)
+                if os.path.exists(folder_path):
+                    f_list = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
+                    if len(f_list) > 0:
+                        vocab.append(phrase)
+
+        self.vocabulary = vocab
         vocab_map = {word: idx for idx, word in enumerate(vocab)}
 
         for phrase in vocab:
@@ -244,7 +278,7 @@ class UserKinematicDataset(Dataset):
                         self.samples.append(raw_arr)
                         self.labels.append(label_idx)
 
-                        # Augmentation
+                        # Biological Augmentation (Motor Speed Variation + Spatial Scale + Sensor Noise)
                         for _ in range(augment_factor):
                             aug = raw_arr.copy()
                             shift = np.random.randint(-2, 3)

@@ -11,40 +11,57 @@ from lip_model import VisemeTemporalNet
 from dataset_manager import (
     UserKinematicDataset,
     get_dataset_statistics,
-    get_dynamic_vocabulary,
     VOCAB_FILE
 )
 
+
 def train_custom_100_epochs(epochs: int = 100, batch_size: int = 32, lr: float = 1e-3) -> dict:
     """
-    Trains VisemeTemporalNet on all folders stored in dataset/ for 100 epochs.
-    Supports arbitrary custom words, medical terms, and full sentences.
+    Trains VisemeTemporalNet on all folders with recorded movements in dataset/ for 100 epochs.
+    Dynamically configures the classification head to the words that have recorded samples.
     """
     print("=" * 65)
     print(f"  [TRAINING ENGINE] RUNNING {epochs} EPOCHS ON LOCAL DATASET")
     print("=" * 65)
 
-    vocab = get_dynamic_vocabulary()
+    # 1. Load dataset with 8x biological augmentation
+    dataset = UserKinematicDataset(augment_factor=8)
+    vocab = dataset.vocabulary
     num_classes = len(vocab)
-    print(f"Dynamic Vocabulary Size: {num_classes} classes")
-    print(f"Active Classes: {', '.join(vocab)}")
 
-    stats = get_dataset_statistics()
-    total_raw_files = stats["total_samples"]
-    print(f"Loaded {total_raw_files} recorded kinematic files across {num_classes} directories.")
+    if num_classes < 2:
+        found_str = ", ".join(vocab) if vocab else "None"
+        raise ValueError(
+            f"Training requires at least 2 distinct words with recorded samples. "
+            f"Currently found samples for: [{found_str}]. "
+            f"Please record at least 2 words (e.g., RESTING and HELP) with 10 samples each!"
+        )
 
-    # Load dataset with augmentation
-    dataset = UserKinematicDataset(augment_factor=6)
     total_samples = len(dataset)
-    print(f"Total augmented training tensors: {total_samples}")
+    print(f"Active Training Classes ({num_classes}): {', '.join(vocab)}")
+    print(f"Total Augmented Training Samples: {total_samples}")
 
-    if total_samples < 20:
-        raise ValueError(f"Insufficient samples to train. Found only {total_samples} samples. Record more samples first!")
+    if total_samples < 16:
+        raise ValueError(
+            f"Insufficient samples to train. Found only {total_samples} augmented samples. "
+            f"Please record at least 10 samples per word!"
+        )
 
+    # Save the active training vocabulary to vocab.json
+    try:
+        with open(VOCAB_FILE, "w", encoding="utf-8") as f:
+            json.dump(vocab, f, indent=2)
+    except Exception as e:
+        print(f"[VOCAB WRITE WARNING] {e}")
+
+    # Train / Val Split
     train_size = int(0.85 * total_samples)
     val_size = total_samples - train_size
-    train_data, val_data = random_split(dataset, [train_size, val_size])
+    if val_size < 1:
+        train_size = total_samples - 1
+        val_size = 1
 
+    train_data, val_data = random_split(dataset, [train_size, val_size])
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
 
@@ -57,6 +74,7 @@ def train_custom_100_epochs(epochs: int = 100, batch_size: int = 32, lr: float =
 
     best_val_acc = 0.0
     save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lip_model.pth")
+    npz_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lip_model_weights.npz")
     history = []
     t_start = time.time()
 
@@ -106,8 +124,7 @@ def train_custom_100_epochs(epochs: int = 100, batch_size: int = 32, lr: float =
         if val_acc >= best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), save_path)
-            # Export to lightweight NumPy format for serverless Vercel deployment
-            npz_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lip_model_weights.npz")
+            # Export to pure NumPy format for serverless runtime
             np_weights = {k: v.cpu().numpy() for k, v in model.state_dict().items()}
             np.savez(npz_path, **np_weights)
 
@@ -117,7 +134,8 @@ def train_custom_100_epochs(epochs: int = 100, batch_size: int = 32, lr: float =
     total_time = round(time.time() - t_start, 2)
     print("=" * 65)
     print(f"  Training Complete in {total_time}s! Best Validation Accuracy: {best_val_acc*100:.2f}%")
-    print(f"  Model saved to: {save_path}")
+    print(f"  Saved PyTorch weights: {save_path}")
+    print(f"  Exported NumPy weights: {npz_path}")
     print("=" * 65)
 
     return {
@@ -128,9 +146,10 @@ def train_custom_100_epochs(epochs: int = 100, batch_size: int = 32, lr: float =
         "final_loss": history[-1]["loss"] if history else 0.0,
         "training_time_s": total_time,
         "total_samples": total_samples,
-        "raw_files": total_raw_files,
+        "num_classes": num_classes,
         "save_path": save_path
     }
+
 
 if __name__ == "__main__":
     train_custom_100_epochs(epochs=100)

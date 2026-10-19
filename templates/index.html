@@ -3,530 +3,1328 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SilentVoice AI • Neural Silent Speech Interface</title>
+  <title>SilentVoice AI • Neural Silent Speech Interface (Samsung SIC-AI)</title>
+
+  <!-- Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
   <style>
-/* ── ROOT VARS ── */
+/* ==========================================================================
+   SILENTVOICE AI • ADVANCED NEURAL BIONIC HUD V4.1
+   Interactive Training Studio & Real-Time Continuous Conversational Decoder
+   ========================================================================== */
+
 :root {
-  --bg: #04060f;
-  --bg-card: #080d1c;
-  --bg-card2: #0c1325;
-  --border: #1a2744;
-  --border-glow: rgba(0,242,254,.25);
-  --cyan: #00f2fe;
-  --blue: #4facfe;
-  --purple: #a855f7;
-  --green: #10b981;
-  --red: #ef4444;
-  --amber: #f59e0b;
-  --text: #f8fafc;
-  --text2: #94a3b8;
-  --text3: #64748b;
-  --mono: 'JetBrains Mono', monospace;
-  --sans: 'Inter', sans-serif;
+  --bg-deep: #04060e;
+  --bg-card: #090e1f;
+  --bg-card-inner: #0f172e;
+  --bg-card-border: #1a2744;
+  
+  --cyan-bionic: #00f2fe;
+  --blue-glow: #4facfe;
+  --purple-neural: #a855f7;
+  --green-active: #10b981;
+  --red-critical: #ef4444;
+  --amber-warn: #f59e0b;
+  
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-dim: #64748b;
+  
+  --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; overflow-x: hidden; }
-button { cursor: pointer; border: none; outline: none; font-family: var(--sans); }
-input, select { font-family: var(--sans); outline: none; }
 
-/* ── HEADER ── */
-.hdr {
-  display: flex; align-items: center; justify-content: space-between;
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button {
+  font-family: var(--font-main);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+/* Header */
+.bionic-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   padding: 14px 28px;
-  background: rgba(8,13,28,.95); backdrop-filter: blur(16px);
-  border-bottom: 1px solid var(--border);
-  position: sticky; top: 0; z-index: 200;
+  background: rgba(9, 14, 31, 0.95);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--bg-card-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
-.hdr-brand { display: flex; align-items: center; gap: 12px; }
-.hdr-icon {
-  width: 38px; height: 38px; border-radius: 9px;
-  background: linear-gradient(135deg, var(--cyan), var(--purple));
-  display: flex; align-items: center; justify-content: center;
-  font-size: 1.3rem; box-shadow: 0 0 20px rgba(0,242,254,.3);
-}
-.hdr-title { font-size: 1.2rem; font-weight: 900; letter-spacing: -.4px; text-transform: uppercase; }
-.hdr-title span { background: linear-gradient(90deg, var(--cyan), var(--blue)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.hdr-badges { display: flex; gap: 8px; align-items: center; }
-.badge {
-  font-family: var(--mono); font-size: .72rem; font-weight: 700;
-  padding: 4px 11px; border-radius: 5px; text-transform: uppercase; letter-spacing: .5px;
-}
-.badge-sic { background: rgba(168,85,247,.12); color: #c084fc; border: 1px solid rgba(168,85,247,.3); }
-.badge-live { background: rgba(0,242,254,.1); color: var(--cyan); border: 1px solid rgba(0,242,254,.3); display: flex; align-items: center; gap: 6px; }
-.dot-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: pulse 1.8s infinite; }
-@keyframes pulse { 0%,100%{transform:scale(1);opacity:.8} 50%{transform:scale(1.4);opacity:1} }
 
-/* ── TABS ── */
-.tab-bar {
-  display: flex; gap: 0;
-  background: var(--bg-card); border-bottom: 1px solid var(--border);
+.brand-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  background: linear-gradient(135deg, var(--cyan-bionic), var(--purple-neural));
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  box-shadow: 0 0 16px rgba(0, 242, 254, 0.35);
+}
+
+.brand-title {
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  text-transform: uppercase;
+}
+
+.brand-title span {
+  background: linear-gradient(90deg, var(--cyan-bionic), var(--blue-glow));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.header-badges {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.badge-tag {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge-sic {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
+.badge-bionic {
+  background: rgba(0, 242, 254, 0.12);
+  color: var(--cyan-bionic);
+  border: 1px solid rgba(0, 242, 254, 0.35);
+}
+
+.pulse-indicator {
+  width: 7px;
+  height: 7px;
+  background: var(--cyan-bionic);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--cyan-bionic);
+  animation: pulse 1.8s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.4); opacity: 1; }
+}
+
+/* Mode Switcher Tabs */
+.mode-nav {
+  display: flex;
+  background: #060a16;
+  border-bottom: 1px solid var(--bg-card-border);
   padding: 0 28px;
+  gap: 8px;
 }
-.tab-btn {
-  padding: 14px 24px; font-size: .88rem; font-weight: 700;
-  color: var(--text3); background: transparent;
-  border-bottom: 3px solid transparent; transition: all .2s;
-  text-transform: uppercase; letter-spacing: .5px;
-}
-.tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); }
-.tab-btn:hover:not(.active) { color: var(--text2); }
-.tab-panel { display: none; }
-.tab-panel.active { display: block; }
 
-/* ── GRID ── */
-.grid { display: grid; grid-template-columns: 520px 1fr; gap: 24px; padding: 24px; max-width: 1600px; margin: 0 auto; }
-@media(max-width:1100px){ .grid{ grid-template-columns:1fr; } }
+.mode-tab-btn {
+  padding: 13px 22px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--text-dim);
+  background: transparent;
+  border-bottom: 3px solid transparent;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-/* ── CAMERA PANE ── */
-.cam-wrap {
-  width: 100%; height: 400px; background: #020408;
-  border-radius: 14px; border: 2px solid var(--border);
-  position: relative; overflow: hidden;
-  box-shadow: 0 16px 48px rgba(0,0,0,.7);
+.mode-tab-btn:hover {
+  color: var(--text-secondary);
 }
-#cameraFeed { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
-#meshCanvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); pointer-events: none; }
-.cam-overlay {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  background: radial-gradient(circle at center, rgba(8,13,28,.85) 0%, rgba(4,6,15,.96) 100%);
-  z-index: 5; text-align: center; padding: 24px;
+
+.mode-tab-btn.active {
+  color: var(--cyan-bionic);
+  border-bottom-color: var(--cyan-bionic);
 }
-.cam-hud { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 8px; }
+
+.tab-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.mode-tab-btn.active .tab-badge {
+  background: rgba(0, 242, 254, 0.2);
+  color: var(--cyan-bionic);
+}
+
+/* Main Bionic Grid Layout */
+.bionic-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px 24px;
+  display: grid;
+  grid-template-columns: 500px 1fr;
+  gap: 24px;
+}
+
+/* Left Pane: Permanent Vision & Kinematics */
+.vision-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pane-heading {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-container {
+  width: 100%;
+  height: 380px;
+  background: #020408;
+  border-radius: 14px;
+  border: 2px solid var(--bg-card-border);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+#cameraFeed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  display: block;
+}
+
+#meshCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1);
+  pointer-events: none;
+}
+
+.camera-hud-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
 .hud-pill {
-  font-family: var(--mono); font-size: .7rem; font-weight: 700;
-  padding: 5px 10px; border-radius: 6px;
-  background: rgba(8,13,28,.85); border: 1px solid var(--border);
-  color: var(--text2);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(9, 14, 31, 0.85);
+  border: 1px solid var(--bg-card-border);
+  backdrop-filter: blur(8px);
+  color: var(--text-secondary);
 }
-.recording-pill { background: rgba(239,68,68,.85) !important; color: #fff !important; border-color: var(--red) !important; }
 
-/* ── CONTROLS ── */
-.ctrl-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.btn {
-  padding: 10px 18px; border-radius: 9px; font-size: .84rem; font-weight: 700;
-  transition: all .2s; display: flex; align-items: center; gap: 7px;
+.recording-indicator-hud {
+  background: rgba(239, 68, 68, 0.9) !important;
+  color: white !important;
+  border-color: var(--red-critical) !important;
+  animation: pulse 1s infinite;
 }
-.btn-cyan { background: linear-gradient(135deg,#0369a1,#0e7490); color: #fff; box-shadow: 0 0 14px rgba(0,242,254,.2); }
-.btn-cyan:hover { box-shadow: 0 0 22px rgba(0,242,254,.45); transform: translateY(-1px); }
-.btn-green { background: linear-gradient(135deg,#059669,#10b981); color: #fff; }
-.btn-green:hover { transform: translateY(-1px); }
-.btn-red { background: linear-gradient(135deg,#b91c1c,#ef4444); color: #fff; }
-.btn-purple { background: linear-gradient(135deg,#7c3aed,#a855f7); color: #fff; box-shadow: 0 0 16px rgba(168,85,247,.3); }
-.btn-purple:hover { box-shadow: 0 0 26px rgba(168,85,247,.55); transform: translateY(-1px); }
-.btn-ghost { background: rgba(255,255,255,.06); border: 1px solid var(--border); color: var(--text2); }
-.btn-ghost:hover { background: rgba(255,255,255,.1); color: var(--text); }
-.btn:disabled { opacity: .45; cursor: not-allowed; transform: none !important; }
 
-/* ── CARD ── */
-.card {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 14px; padding: 18px;
+.standby-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(9, 14, 31, 0.85) 0%, rgba(4, 6, 14, 0.96) 100%);
+  z-index: 5;
+  text-align: center;
+  padding: 24px;
 }
-.card-title {
-  font-size: .78rem; font-weight: 800; text-transform: uppercase;
-  letter-spacing: 1.5px; color: var(--text3); margin-bottom: 14px;
-  display: flex; align-items: center; gap: 8px;
-}
-.card-title .ct-icon { color: var(--cyan); }
 
-/* ── TRAINING STUDIO ── */
-.word-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.word-card {
-  background: var(--bg-card2); border: 1px solid var(--border);
-  border-radius: 11px; padding: 14px; transition: border-color .2s;
+.controls-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.word-card.recording-active { border-color: var(--red); box-shadow: 0 0 14px rgba(239,68,68,.25); }
-.word-card.complete { border-color: var(--green); box-shadow: 0 0 14px rgba(16,185,129,.2); }
+
+.btn-bionic {
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #0284c7, #2563eb);
+  color: white;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.5);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--bg-card-border);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--cyan-bionic);
+}
+
+.btn-demo {
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: white;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #b91c1c, #ef4444);
+  color: white;
+}
+
+.btn-purple {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: white;
+  box-shadow: 0 4px 16px rgba(168, 85, 247, 0.35);
+}
+
+.btn-bionic:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* Telemetry KPIs */
+.telemetry-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.kpi-mini-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+
+.kpi-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+.kpi-val {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--cyan-bionic);
+  margin-top: 2px;
+}
+
+/* Right Workspace Pane */
+.workspace-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tab-content-panel {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tab-content-panel.active {
+  display: flex;
+}
+
+/* ──────────────────────────────────────────
+   TAB 1: 10X MOVEMENT TRAINING STUDIO
+   ────────────────────────────────────────── */
+.studio-top-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.studio-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.studio-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--cyan-bionic);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-actions-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.add-phrase-box {
+  display: flex;
+  gap: 8px;
+  background: var(--bg-deep);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 8px;
+  padding: 4px 6px;
+}
+
+.phrase-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  width: 260px;
+}
+
+/* Training Control Hub */
+.train-hub-card {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(99, 102, 241, 0.04));
+  border: 2px solid rgba(168, 85, 247, 0.35);
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.train-hub-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dataset-progress-bar {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.dataset-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan-bionic), var(--purple-neural));
+  width: 0%;
+  transition: width 0.4s ease;
+}
+
+.train-status-pill {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 8px 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.train-status-pill.warn {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--amber-warn);
+}
+
+.train-status-pill.ready {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: var(--green-active);
+}
+
+/* 10-Slot Word Grid */
+.words-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+
+.word-card-studio {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.word-card-studio:hover {
+  border-color: rgba(0, 242, 254, 0.35);
+}
+
+.word-card-studio.complete {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.04), rgba(9, 14, 31, 0.95));
+}
+
+.word-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .word-card-name {
-  font-weight: 800; font-size: .92rem; letter-spacing: .5px;
-  margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;
-}
-.word-status-icon { font-size: 1rem; }
-.word-progress-bar { height: 6px; background: rgba(255,255,255,.08); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
-.word-progress-fill { height: 100%; border-radius: 4px; transition: width .4s ease; background: linear-gradient(90deg,var(--cyan),var(--blue)); }
-.word-progress-fill.complete { background: linear-gradient(90deg,var(--green),#34d399); }
-.word-count { font-family: var(--mono); font-size: .72rem; color: var(--text3); margin-bottom: 10px; }
-.word-actions { display: flex; gap: 6px; }
-.word-actions .btn { padding: 7px 12px; font-size: .75rem; flex: 1; justify-content: center; }
-
-/* ── RECORD SESSION MODAL ── */
-#recordModal {
-  position: fixed; inset: 0; background: rgba(4,6,15,.85); backdrop-filter: blur(8px);
-  z-index: 500; display: none; align-items: center; justify-content: center;
-}
-#recordModal.open { display: flex; }
-.modal-box {
-  background: var(--bg-card); border: 1px solid var(--border);
-  border-radius: 18px; padding: 32px; width: 420px; max-width: 95vw;
-  text-align: center; box-shadow: 0 24px 64px rgba(0,0,0,.8);
-}
-.modal-title { font-size: 1.3rem; font-weight: 900; margin-bottom: 8px; }
-.modal-word { font-size: 2rem; font-weight: 900; color: var(--cyan); margin: 12px 0; letter-spacing: 1px; }
-.modal-instruction { font-size: .88rem; color: var(--text2); line-height: 1.5; margin-bottom: 20px; }
-.modal-progress-ring { margin: 0 auto 16px; }
-.sample-dots { display: flex; gap: 8px; justify-content: center; margin-bottom: 20px; flex-wrap: wrap; }
-.sample-dot { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); background: transparent; font-size: .72rem; display: flex; align-items: center; justify-content: center; font-weight: 700; transition: all .3s; }
-.sample-dot.done { background: var(--green); border-color: var(--green); color: #fff; }
-.sample-dot.active { border-color: var(--red); background: rgba(239,68,68,.2); animation: pulse 1s infinite; }
-.countdown-ring { font-size: 2.5rem; font-weight: 900; color: var(--red); font-family: var(--mono); }
-
-/* ── KPI TELEMETRY ── */
-.kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
-.kpi { background: var(--bg-card2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; text-align: center; }
-.kpi-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; color: var(--text3); letter-spacing: .8px; margin-bottom: 5px; }
-.kpi-val { font-family: var(--mono); font-size: 1.1rem; font-weight: 700; }
-
-/* ── BILLBOARD ── */
-.billboard {
-  background: linear-gradient(135deg, rgba(0,242,254,.06), rgba(168,85,247,.04));
-  border: 1px solid rgba(0,242,254,.25); border-radius: 14px; padding: 20px 24px;
-  transition: all .3s;
-}
-.billboard.active { border-color: var(--green); box-shadow: 0 0 24px rgba(16,185,129,.2); }
-.billboard-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--text3); letter-spacing: 1.2px; margin-bottom: 6px; display: flex; justify-content: space-between; }
-.billboard-word { font-size: 2.8rem; font-weight: 900; letter-spacing: 1.5px; color: var(--cyan); min-height: 60px; }
-.billboard-sentence { font-size: .95rem; color: var(--text2); line-height: 1.5; margin-top: 10px; font-style: italic; }
-
-/* ── CONFIDENCE BADGE ── */
-.conf-badge {
-  font-family: var(--mono); font-size: .72rem; font-weight: 700;
-  padding: 3px 9px; border-radius: 5px;
-  background: rgba(16,185,129,.15); color: var(--green); border: 1px solid rgba(16,185,129,.3);
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.5px;
 }
 
-/* ── PROB BARS ── */
-.prob-grid { display: flex; flex-direction: column; gap: 7px; }
-.prob-row { display: flex; align-items: center; gap: 10px; }
-.prob-label { font-family: var(--mono); font-size: .72rem; font-weight: 700; color: var(--text2); width: 110px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prob-track { flex: 1; height: 8px; background: rgba(255,255,255,.07); border-radius: 4px; overflow: hidden; }
-.prob-fill { height: 100%; border-radius: 4px; transition: width .3s ease; background: linear-gradient(90deg,var(--cyan),var(--blue)); }
-.prob-fill.top { background: linear-gradient(90deg,var(--green),#34d399); }
-.prob-pct { font-family: var(--mono); font-size: .7rem; color: var(--text3); width: 42px; text-align: right; }
-
-/* ── CHAT ── */
-.chat-area { display: flex; flex-direction: column; gap: 10px; max-height: 220px; overflow-y: auto; padding-right: 4px; scroll-behavior: smooth; }
-.chat-area::-webkit-scrollbar { width: 4px; } .chat-area::-webkit-scrollbar-track { background: transparent; } .chat-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-.bubble { max-width: 86%; padding: 10px 14px; border-radius: 12px; font-size: .86rem; line-height: 1.45; animation: fadeUp .3s ease; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
-.bubble-patient { align-self: flex-start; background: rgba(0,242,254,.08); border: 1px solid rgba(0,242,254,.25); border-bottom-left-radius: 4px; }
-.bubble-ai { align-self: flex-end; background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.3); border-bottom-right-radius: 4px; }
-.bubble-meta { font-size: .68rem; font-family: var(--mono); color: var(--text3); margin-bottom: 4px; }
-.bubble-patient .bubble-meta { color: var(--cyan); } .bubble-ai .bubble-meta { color: #c084fc; }
-
-/* ── SUGGESTION CHIPS ── */
-.chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
-.chip {
-  font-family: var(--mono); font-size: .74rem; font-weight: 700;
-  padding: 5px 13px; border-radius: 6px;
-  background: rgba(255,255,255,.05); border: 1px solid rgba(0,242,254,.25);
-  color: var(--text); transition: all .18s;
+.word-count-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
 }
-.chip:hover { background: rgba(0,242,254,.15); border-color: var(--cyan); color: var(--cyan); transform: translateY(-1px); }
 
-/* ── STATUS ── */
-.status-bar {
-  background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.25);
-  border-radius: 10px; padding: 10px 14px; font-family: var(--mono);
-  font-size: .82rem; color: #34d399; display: flex; align-items: center; gap: 10px;
+.word-card-studio.complete .word-count-badge {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--green-active);
 }
-.status-bar.warn { background: rgba(245,158,11,.08); border-color: rgba(245,158,11,.25); color: var(--amber); }
-.status-bar.err { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: var(--red); }
 
-/* ── TRAIN SECTION ── */
-.train-section { border: 2px solid rgba(168,85,247,.35); border-radius: 14px; padding: 20px; background: rgba(168,85,247,.04); }
-.train-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-.train-title { font-size: 1rem; font-weight: 800; color: var(--purple); }
-.train-meta { font-family: var(--mono); font-size: .75rem; color: var(--text3); }
+/* 10 Visual Slot Boxes */
+.slots-container {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 5px;
+}
 
-.epoch-progress-outer { background: rgba(255,255,255,.06); border-radius: 6px; height: 12px; overflow: hidden; margin: 12px 0; }
-.epoch-progress-inner { height: 100%; background: linear-gradient(90deg, var(--purple), #6366f1); border-radius: 6px; transition: width .5s ease; width: 0%; }
+.slot-box {
+  height: 28px;
+  border-radius: 5px;
+  border: 1px solid var(--bg-card-border);
+  background: var(--bg-card-inner);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  transition: all 0.2s ease;
+}
 
-/* ── HISTORY ── */
-.history-list { display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
-.history-item { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; background: rgba(255,255,255,.03); border-radius: 7px; border-left: 3px solid var(--cyan); font-size: .82rem; }
-.history-item .hi-time { font-family: var(--mono); font-size: .68rem; color: var(--text3); flex-shrink: 0; }
+.slot-box.filled {
+  background: rgba(0, 242, 254, 0.2);
+  border-color: var(--cyan-bionic);
+  color: var(--cyan-bionic);
+}
 
-/* ── MISC ── */
-.section-sep { height: 1px; background: var(--border); margin: 20px 0; }
-.fl { display: flex; } .fl-col { flex-direction: column; } .gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
-.fw { width: 100%; }
+.slot-box.current {
+  border-color: var(--red-critical);
+  color: var(--red-critical);
+  animation: pulse 1s infinite;
+}
+
+.word-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.word-card-actions .btn-bionic {
+  flex: 1;
+  justify-content: center;
+  padding: 8px 10px;
+  font-size: 0.78rem;
+}
+
+/* Recording Modal Overlay */
+.recording-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 14, 0.88);
+  backdrop-filter: blur(10px);
+  z-index: 500;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.recording-modal.active {
+  display: flex;
+}
+
+.modal-content-card {
+  background: var(--bg-card);
+  border: 2px solid var(--cyan-bionic);
+  border-radius: 18px;
+  padding: 32px;
+  width: 440px;
+  max-width: 90vw;
+  text-align: center;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+}
+
+.modal-word-title {
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: var(--cyan-bionic);
+  letter-spacing: 1px;
+  margin: 10px 0;
+}
+
+.modal-countdown-num {
+  font-family: var(--font-mono);
+  font-size: 3.5rem;
+  font-weight: 900;
+  color: var(--red-critical);
+  margin: 10px 0;
+}
+
+/* ──────────────────────────────────────────
+   TAB 2: REAL-TIME LIVE TESTING HUD
+   ────────────────────────────────────────── */
+.decoded-word-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 14px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+}
+
+.decoded-word-card.active-speech {
+  border-color: var(--green-active);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.25);
+}
+
+.billboard-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+}
+
+.confidence-badge {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--green-active);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.billboard-word {
+  font-size: 2.8rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: var(--cyan-bionic);
+  min-height: 56px;
+}
+
+.synthesized-box {
+  background: rgba(15, 23, 42, 0.6);
+  border-left: 3px solid var(--cyan-bionic);
+  border-radius: 0 8px 8px 0;
+  padding: 10px 14px;
+}
+
+.synthesized-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.synthesized-text {
+  font-size: 0.95rem;
+  font-style: italic;
+  color: #e2e8f0;
+  margin-top: 4px;
+}
+
+/* Continuous Sentence Accumulator Banner */
+.continuous-sentence-banner {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: #34d399;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Real-Time Continuous Conversation Feed */
+.conversation-stream-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conversation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+
+.conversation-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--cyan-bionic);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-scroll-area {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+
+.chat-bubble {
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  animation: fadeInBubble 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes fadeInBubble {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-patient {
+  align-self: flex-start;
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.12), rgba(79, 172, 254, 0.08));
+  border: 1px solid rgba(0, 242, 254, 0.35);
+  color: #f1f5f9;
+  border-bottom-left-radius: 4px;
+}
+
+.chat-ai {
+  align-self: flex-end;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.18), rgba(99, 102, 241, 0.12));
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #f8fafc;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-meta {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.chat-patient .chat-meta {
+  color: var(--cyan-bionic);
+}
+
+.chat-ai .chat-meta {
+  color: #c084fc;
+}
+
+/* Predictive Suggestions Bar */
+.suggestions-box {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px dashed rgba(0, 242, 254, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestions-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.suggestions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.suggestion-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.suggestion-chip:hover {
+  background: rgba(0, 242, 254, 0.2);
+  border-color: var(--cyan-bionic);
+  color: var(--cyan-bionic);
+  transform: translateY(-1px);
+}
+
+/* Softmax Probability Heatmap */
+.heatmap-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.heatmap-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.viseme-bars-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.viseme-bar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.viseme-name-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.viseme-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.viseme-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan-bionic), var(--blue-glow));
+  width: 2%;
+  border-radius: 3px;
+  transition: width 0.2s ease;
+}
+
+/* History Card */
+.history-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: var(--bg-deep);
+  border-radius: 6px;
+  border-left: 3px solid var(--cyan-bionic);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 1100px) {
+  .bionic-container {
+    grid-template-columns: 1fr;
+  }
+}
   </style>
+
+  <!-- MediaPipe CDNs (WebGL GPU Accelerated in Browser) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
-<!-- ════════ HEADER ════════ -->
-<header class="hdr">
-  <div class="hdr-brand">
-    <div class="hdr-icon">👄</div>
-    <div class="hdr-title">SILENTVOICE <span>AI</span></div>
-  </div>
-  <div class="hdr-badges">
-    <span class="badge badge-sic">Samsung SIC-AI</span>
-    <span class="badge badge-live"><span class="dot-pulse"></span>Neural Engine v4.0</span>
-  </div>
-</header>
+  <!-- Bionic Header -->
+  <header class="bionic-header">
+    <div class="brand-box">
+      <div class="brand-icon">👄</div>
+      <div class="brand-title">SILENTVOICE <span>AI</span></div>
+    </div>
 
-<!-- ════════ TABS ════════ -->
-<div class="tab-bar">
-  <button class="tab-btn active" data-tab="train">🧠 Training Studio</button>
-  <button class="tab-btn" data-tab="test">🎤 Live Testing</button>
-</div>
+    <div class="header-badges">
+      <span class="badge-tag badge-sic">Samsung Innovation Campus • SIC-AI</span>
+      <span class="badge-tag badge-bionic">
+        <span class="pulse-indicator"></span>
+        Neural Bionic Engine v4.1
+      </span>
+    </div>
+  </header>
 
-<!-- ════════════════════════════════════════
-     TAB 1: TRAINING STUDIO
-════════════════════════════════════════ -->
-<div class="tab-panel active" id="tab-train">
-  <div class="grid">
+  <!-- Mode Switcher Navigation -->
+  <nav class="mode-nav">
+    <button class="mode-tab-btn active" data-tab="studio">
+      <span>🧠 10x Movement Training Studio</span>
+      <span class="tab-badge" id="navDatasetBadge">{{ dataset_stats.total_samples }} Samples</span>
+    </button>
+    <button class="mode-tab-btn" data-tab="live">
+      <span>🎤 Real-Time Live Testing & AI Partner</span>
+      <span class="tab-badge" style="color: #34d399;">● Decoder Ready</span>
+    </button>
+  </nav>
 
-    <!-- LEFT: Camera -->
-    <div class="fl fl-col gap-12">
-      <div class="cam-wrap" id="camWrap">
+  <!-- Main Bionic Grid Container -->
+  <main class="bionic-container">
+
+    <!-- LEFT PANE: UNIFIED VISION FEED & TELEMETRY -->
+    <section class="vision-pane">
+      <div class="pane-heading">
+        <span>📷 Oculofacial Sensory Feed & Bionic Kinematics</span>
+      </div>
+
+      <div class="video-container">
         <video id="cameraFeed" playsinline autoplay muted></video>
         <canvas id="meshCanvas"></canvas>
 
         <!-- Standby Overlay -->
-        <div class="cam-overlay" id="standbyOverlay">
-          <div style="font-size:2.5rem;margin-bottom:10px">📷</div>
-          <div style="font-size:.95rem;font-weight:800;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Camera Standby</div>
-          <div style="font-size:.8rem;color:var(--text2);max-width:280px;line-height:1.5;margin-bottom:16px">Start camera, then record 10 mouth movements per word to train the AI model.</div>
-          <button class="btn btn-cyan" onclick="document.getElementById('btnCamera').click()">⚡ Start Camera</button>
+        <div class="standby-overlay" id="standbyOverlay">
+          <div style="font-size: 2.4rem; margin-bottom: 8px;">👄</div>
+          <div style="font-size: 0.95rem; font-weight: 800; color: var(--cyan-bionic); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;">
+            OCULOFACIAL FEED STANDBY
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary); max-width: 340px; line-height: 1.4; margin-bottom: 14px;">
+            Click <strong>[⚡ Engage Bionic Camera]</strong> for real-time lip tracking, or click <strong>[🎮 Live Speech Demo]</strong> to test speech synthesis immediately.
+          </div>
+          <button class="btn-bionic btn-demo" id="btnQuickDemo">
+            <span>🎮 Run Live Speech Demo</span>
+          </button>
         </div>
 
-        <!-- HUD -->
-        <div class="cam-hud">
-          <div class="hud-pill" id="recordingPill" style="display:none">🔴 RECORDING (<span id="recCountdown">30</span>f)</div>
-          <div class="hud-pill" id="hudStatus">MediaPipe • WebGL</div>
+        <div class="camera-hud-overlay">
+          <div class="hud-pill" id="recordingIndicator" style="display:none;">
+            🔴 RECORDING SAMPLE (<span id="recCountdown">30</span>f)
+          </div>
+          <div class="hud-pill" id="hudStatus">MediaPipe 468-Mesh • WebGL</div>
         </div>
       </div>
 
-      <!-- Camera Controls -->
-      <div class="ctrl-row">
-        <button class="btn btn-cyan" id="btnCamera">⚡ Start Camera</button>
-        <button class="btn btn-ghost" id="btnCalibrate">🎯 Calibrate</button>
-        <button class="btn btn-ghost" id="btnVoiceToggle">🔊 Voice ON</button>
-      </div>
-
-      <!-- KPI Telemetry -->
-      <div class="kpi-row">
-        <div class="kpi">
-          <div class="kpi-label">Aperture</div>
-          <div class="kpi-val" id="kpiAperture" style="color:var(--purple)">--%</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Velocity</div>
-          <div class="kpi-val" id="kpiVelocity" style="color:var(--green)">--</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">FPS</div>
-          <div class="kpi-val" id="kpiFps" style="color:var(--amber)">--</div>
-        </div>
-        <div class="kpi">
-          <div class="kpi-label">Latency</div>
-          <div class="kpi-val" id="kpiLatency" style="color:var(--cyan)">--ms</div>
-        </div>
-      </div>
-
-      <!-- Add Custom Word -->
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">➕</span> Add New Word / Sentence</div>
-        <div class="fl gap-8">
-          <input type="text" id="newWordInput" placeholder='e.g. "COME HERE" or "GOODBYE"'
-            style="flex:1;background:#020408;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 12px;font-size:.83rem;font-family:var(--mono)">
-          <button class="btn btn-cyan" id="btnAddWord">Add</button>
-        </div>
-        <div style="font-size:.73rem;color:var(--text3);margin-top:7px">Creates a dedicated folder <code style="color:var(--cyan)">dataset/&lt;WORD&gt;/</code> and adds it to training queue.</div>
-      </div>
-
-      <!-- Train Model -->
-      <div class="train-section">
-        <div class="train-header">
-          <div class="train-title">⚡ Train Neural Model</div>
-          <div class="train-meta" id="trainMeta">100 Epochs • BiLSTM + Attention</div>
-        </div>
-        <div style="font-size:.8rem;color:var(--text2);line-height:1.5;margin-bottom:14px">
-          Record <strong style="color:var(--cyan)">{{ required_samples }} samples</strong> per word then click Train. The model learns your personal lip movement patterns across all words simultaneously.
-        </div>
-        <div id="trainReadyStatus" class="status-bar warn">⚠ Record {{ required_samples }} samples per word to enable training.</div>
-        <div class="epoch-progress-outer" id="epochProgressOuter" style="display:none">
-          <div class="epoch-progress-inner" id="epochProgressBar"></div>
-        </div>
-        <div id="trainLog" style="font-family:var(--mono);font-size:.72rem;color:var(--text3);min-height:20px;margin-top:8px;display:none"></div>
-        <button class="btn btn-purple fw" id="btnTrain" style="justify-content:center;margin-top:14px" disabled>
-          ⚡ Train 100 Epochs on All Recordings
+      <!-- Vision Action Controls -->
+      <div class="controls-bar">
+        <button class="btn-bionic btn-primary" id="btnCamera">
+          <span>⚡ Engage Bionic Camera</span>
+        </button>
+        <button class="btn-bionic btn-demo" id="btnSimulate">
+          <span>🎮 Live Speech Demo</span>
+        </button>
+        <button class="btn-bionic btn-secondary" id="btnCalibrate" title="Sets personal neutral resting baseline">
+          <span>🎯 Calibrate</span>
         </button>
       </div>
-    </div>
 
-    <!-- RIGHT: Word Cards Grid -->
-    <div class="fl fl-col gap-12">
-      <div class="card-title" style="margin-bottom:0"><span class="ct-icon">🧬</span> Word Training Queue — {{ required_samples }} Recordings Each</div>
-      <div style="font-size:.78rem;color:var(--text2)">Select a word, start camera, then click <strong style="color:var(--red)">● Record</strong>. Each session captures 1 second of your mouth movement automatically.</div>
+      <button class="btn-bionic btn-secondary" id="btnVoiceToggle" style="width: 100%; justify-content: center;">
+        <span>🔊 Audio Voice: ON (Audible TTS)</span>
+      </button>
 
-      <div class="word-grid" id="wordGrid">
-        {% for word in vocabulary %}
-        {% set folder = word | replace(' ', '_') %}
-        {% set count = dataset_stats.real_recordings.get(word, dataset_stats.per_word_counts.get(word, 0)) if dataset_stats.real_recordings is defined else dataset_stats.per_word_counts.get(word, 0) %}
-        {% set real_count = dataset_stats.real_recordings.get(word, 0) if dataset_stats.real_recordings is defined else 0 %}
-        {% set pct = [(real_count * 100 // required_samples), 100] | min %}
-        <div class="word-card {% if real_count >= required_samples %}complete{% endif %}" id="wcard-{{ folder }}" data-word="{{ word }}">
-          <div class="word-card-name">
-            <span>{{ word }}</span>
-            <span class="word-status-icon">{% if real_count >= required_samples %}✅{% elif real_count > 0 %}🔄{% else %}⭕{% endif %}</span>
-          </div>
-          <div class="word-progress-bar">
-            <div class="word-progress-fill {% if real_count >= required_samples %}complete{% endif %}" style="width:{{ pct }}%" id="wfill-{{ folder }}"></div>
-          </div>
-          <div class="word-count" id="wcount-{{ folder }}">{{ real_count }} / {{ required_samples }} recordings</div>
-          <div class="word-actions">
-            <button class="btn btn-red" onclick="startRecordSession('{{ word }}')" id="wrec-{{ folder }}">
-              ● Record
-            </button>
-            <button class="btn btn-ghost" onclick="clearWordSamples('{{ word }}')" title="Clear all recordings for this word">
-              🗑
-            </button>
-          </div>
+      <!-- Real-Time Hardware Telemetry -->
+      <div class="telemetry-row">
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Inference Latency</div>
+          <div class="kpi-val" id="kpiLatency">--<span style="font-size:0.75rem">ms</span></div>
         </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</div>
 
-<!-- ════════════════════════════════════════
-     TAB 2: LIVE TESTING
-════════════════════════════════════════ -->
-<div class="tab-panel" id="tab-test">
-  <div class="grid">
-
-    <!-- LEFT: Camera + controls -->
-    <div class="fl fl-col gap-12">
-      <div class="cam-wrap" id="camWrapTest">
-        <video id="cameraFeedTest" playsinline autoplay muted></video>
-        <canvas id="meshCanvasTest"></canvas>
-        <div class="cam-overlay" id="standbyOverlayTest">
-          <div style="font-size:2.5rem;margin-bottom:10px">🎤</div>
-          <div style="font-size:.95rem;font-weight:800;color:var(--cyan);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Ready to Test</div>
-          <div style="font-size:.8rem;color:var(--text2);max-width:280px;line-height:1.5;margin-bottom:16px">Start camera and mouth a word silently. The AI will recognize and speak it in real-time.</div>
-          <div class="ctrl-row" style="justify-content:center">
-            <button class="btn btn-cyan" onclick="document.getElementById('btnCameraTest').click()">⚡ Start Camera</button>
-            <button class="btn btn-green" id="btnDemoTest">🎮 Demo</button>
-          </div>
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Vertical Aperture</div>
+          <div class="kpi-val" id="kpiAperture" style="color: #a855f7;">--%</div>
         </div>
-        <div class="cam-hud">
-          <div class="hud-pill" id="hudStatusTest">MediaPipe • Ready</div>
+
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Kinematic Velocity</div>
+          <div class="kpi-val" id="kpiVelocity" style="color: var(--green-active);">--</div>
+        </div>
+
+        <div class="kpi-mini-card">
+          <div class="kpi-title">Pipeline Speed</div>
+          <div class="kpi-val" id="kpiFps" style="color: var(--amber-warn);">--</div>
         </div>
       </div>
 
-      <div class="ctrl-row">
-        <button class="btn btn-cyan" id="btnCameraTest">⚡ Start Camera</button>
-        <button class="btn btn-green" id="btnDemo">🎮 Run Demo</button>
-        <button class="btn btn-ghost" id="btnCalibrateTest">🎯 Calibrate</button>
-        <button class="btn btn-ghost" id="btnVoiceTest">🔊 Voice ON</button>
-      </div>
+      <!-- Viseme Softmax Probability Distribution -->
+      <div class="heatmap-card">
+        <div class="heatmap-title">
+          <span>Viseme Articulatory Softmax Distribution</span>
+          <span style="font-size: 0.7rem; color: var(--cyan-bionic); font-family: var(--font-mono);">Softmax Probabilities</span>
+        </div>
 
-      <!-- KPI row -->
-      <div class="kpi-row">
-        <div class="kpi"><div class="kpi-label">Aperture</div><div class="kpi-val" id="kpiApertureT" style="color:var(--purple)">--%</div></div>
-        <div class="kpi"><div class="kpi-label">Velocity</div><div class="kpi-val" id="kpiVelocityT" style="color:var(--green)">--</div></div>
-        <div class="kpi"><div class="kpi-label">FPS</div><div class="kpi-val" id="kpiFpsT" style="color:var(--amber)">--</div></div>
-        <div class="kpi"><div class="kpi-label">Latency</div><div class="kpi-val" id="kpiLatencyT" style="color:var(--cyan)">--ms</div></div>
-      </div>
-
-      <!-- Probability Distribution -->
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">📊</span> Softmax Probability Distribution</div>
-        <div class="prob-grid" id="probGrid">
+        <div class="viseme-bars-grid" id="visemeBarsGrid">
           {% for word in vocabulary %}
-          {% set key = word | replace(' ', '') %}
-          <div class="prob-row">
-            <div class="prob-label" title="{{ word }}">{{ word }}</div>
-            <div class="prob-track"><div class="prob-fill" id="bar-{{ key }}" style="width:2%"></div></div>
-            <div class="prob-pct" id="val-{{ key }}">0.0%</div>
+          {% set cleanKey = word | replace(' ', '') %}
+          <div class="viseme-bar-item">
+            <div class="viseme-name-row">
+              <span title="{{ word }}">{{ word }}</span>
+              <span id="val-{{ cleanKey }}" style="color: var(--cyan-bionic);">0.0%</span>
+            </div>
+            <div class="viseme-track">
+              <div class="viseme-fill" id="bar-{{ cleanKey }}"></div>
+            </div>
           </div>
           {% endfor %}
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- RIGHT: Live Output -->
-    <div class="fl fl-col gap-12">
 
-      <!-- Billboard -->
-      <div class="billboard" id="billboard">
-        <div class="billboard-label">
-          <span>Decoded Silent Word</span>
-          <span class="conf-badge" id="confBadge">Awaiting Input</span>
-        </div>
-        <div class="billboard-word" id="billboardWord">RESTING</div>
-        <div class="billboard-sentence" id="billboardSentence">"Mouth a silent word in front of the camera..."</div>
-      </div>
+    <!-- RIGHT PANE: DYNAMIC WORKSPACE TABS -->
+    <section class="workspace-pane">
 
-      <!-- Continuous stream -->
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">💬</span> Running Sentence Stream</div>
-        <div id="continuousText" style="font-size:.9rem;color:#34d399;font-family:var(--mono);min-height:24px;line-height:1.5">—</div>
-      </div>
+      <!-- ================================================================ -->
+      <!-- TAB 1: 10X MOVEMENT TRAINING STUDIO                              -->
+      <!-- ================================================================ -->
+      <div class="tab-content-panel active" id="tab-studio">
 
-      <!-- Live Conversation -->
-      <div class="card">
-        <div class="card-title" style="justify-content:space-between">
-          <span><span class="ct-icon">🗣️</span> Live AI Dialogue</span>
-          <span style="font-size:.68rem;font-family:var(--mono);color:var(--green)">● Care Agent Active</span>
-        </div>
-        <div class="chat-area" id="chatArea">
-          <div class="bubble bubble-ai">
-            <div class="bubble-meta">🤖 AI Care Partner • Online</div>
-            <div>Hello! I am your SilentVoice AI partner. Speak silently with your mouth — I will decode and respond in real-time.</div>
+        <!-- Studio Control Header Card -->
+        <div class="studio-top-card">
+          <div class="studio-header-row">
+            <div class="studio-title">
+              <span>🎯 Personal Movement Studio • 10 Recordings Per Word</span>
+            </div>
+            <div class="studio-actions-row">
+              <button class="btn-bionic btn-danger" id="btnResetAll" title="Wipes all recorded movements to start completely fresh">
+                <span>🚨 Empty All Trained Boxes</span>
+              </button>
+            </div>
+          </div>
+
+          <p style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5;">
+            Train the neural network directly on your actual mouth movements. Each box stores 1 second (30 frames) of your unique articulatory kinematics in <code style="color: #38bdf8; font-family: monospace;">dataset/&lt;WORD&gt;/</code>.
+          </p>
+
+          <!-- Add Custom Word or Sentence -->
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <div class="add-phrase-box" style="flex: 1;">
+              <input type="text" id="customPhraseInput" class="phrase-input" style="width: 100%;" placeholder="Add ANY word or full sentence (e.g. I NEED MEDICINE)">
+            </div>
+            <button class="btn-bionic btn-primary" id="btnAddPhrase">
+              <span>➕ Add Word Box</span>
+            </button>
           </div>
         </div>
-      </div>
 
-      <!-- Suggestions -->
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">⚡</span> Contextual Next-Word Suggestions</div>
-        <div class="chip-row" id="chipRow">
-          <button class="chip" data-word="HELP">HELP</button>
-          <button class="chip" data-word="WATER">WATER</button>
-          <button class="chip" data-word="DOCTOR">DOCTOR</button>
-          <button class="chip" data-word="THANK YOU">THANK YOU</button>
-          <button class="chip" data-word="YES">YES</button>
+        <!-- 100-Epoch Training Hub -->
+        <div class="train-hub-card">
+          <div class="train-hub-header">
+            <div>
+              <span style="font-size: 0.95rem; font-weight: 800; color: #c084fc;">⚡ 100-Epoch Neural Network Trainer</span>
+              <div style="font-size: 0.75rem; color: var(--text-dim); margin-top: 2px;">
+                BiLSTM + Temporal Attention • Cosine Annealing Optimizer
+              </div>
+            </div>
+            <span style="font-family: var(--font-mono); font-size: 0.82rem; font-weight: 700; color: var(--cyan-bionic);" id="studioSampleCounter">
+              {{ dataset_stats.total_samples }} Total Recordings
+            </span>
+          </div>
+
+          <div class="dataset-progress-bar">
+            <div class="dataset-progress-fill" id="datasetProgressFill"></div>
+          </div>
+
+          <div class="train-status-pill warn" id="trainStatusBanner">
+            <span>⚠ Record 10 samples for at least 2 words to enable 100-epoch training.</span>
+          </div>
+
+          <!-- Epoch Training Progress Outer Bar -->
+          <div id="epochTrainingProgress" style="display: none;">
+            <div style="display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.75rem; margin-bottom: 4px;">
+              <span id="epochProgressLabel">Training Epoch 0 / 100...</span>
+              <span id="epochProgressValAcc" style="color: #34d399;">Best Val Acc: --%</span>
+            </div>
+            <div class="dataset-progress-bar" style="height: 10px;">
+              <div class="dataset-progress-fill" id="epochProgressBar" style="width: 0%; background: linear-gradient(90deg, #a855f7, #38bdf8);"></div>
+            </div>
+          </div>
+
+          <button class="btn-bionic btn-purple" id="btnTrain100" style="justify-content: center; font-size: 0.9rem; padding: 12px;" disabled>
+            <span>⚡ Train Neural Network on Stored Movements (100 Epochs)</span>
+          </button>
         </div>
+
+        <!-- Word Cards Grid (10 Slots Per Word) -->
+        <div class="words-grid" id="wordsGrid">
+          {% for word in vocabulary %}
+          {% set cleanDir = word | replace(' ', '_') %}
+          {% set cleanKey = word | replace(' ', '') %}
+          {% set count = dataset_stats.real_recordings.get(word, 0) %}
+          <div class="word-card-studio {% if count >= required_samples %}complete{% endif %}" id="card-{{ cleanDir }}" data-word="{{ word }}">
+            <div class="word-card-header">
+              <span class="word-card-name">{{ word }}</span>
+              <span class="word-count-badge" id="badge-{{ cleanDir }}">
+                {{ count }} / {{ required_samples }}
+              </span>
+            </div>
+
+            <!-- 10 Visual Sample Slots -->
+            <div class="slots-container" id="slots-{{ cleanDir }}">
+              {% for i in range(1, required_samples + 1) %}
+              <div class="slot-box {% if i <= count %}filled{% endif %}" id="slot-{{ cleanDir }}-{{ i }}">
+                {% if i <= count %}✓{% else %}{{ i }}{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+
+            <!-- Card Actions -->
+            <div class="word-card-actions">
+              <button class="btn-bionic btn-primary" onclick="window.record10xSequence('{{ word }}')">
+                <span>● Record 10x</span>
+              </button>
+              <button class="btn-bionic btn-secondary" onclick="window.recordSingleSample('{{ word }}')">
+                <span>⏺ 1x</span>
+              </button>
+              <button class="btn-bionic btn-secondary" onclick="window.clearWordSamples('{{ word }}')" title="Clear recorded samples for this word">
+                <span>🗑</span>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+
       </div>
 
-      <!-- Detection History -->
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">📋</span> Detection Log</div>
-        <div class="history-list" id="historyList">
-          <div class="history-item">
-            <span><strong>SYSTEM:</strong> SilentVoice AI Initialized</span>
-            <span class="hi-time">Online</span>
+
+      <!-- ================================================================ -->
+      <!-- TAB 2: REAL-TIME LIVE TESTING HUD & AI PARTNER                   -->
+      <!-- ================================================================ -->
+      <div class="tab-content-panel" id="tab-live">
+
+        <!-- Live Decoded Word Billboard -->
+        <div class="decoded-word-card" id="billboardCard">
+          <div class="billboard-label">
+            <span>Decoded Articulatory Viseme</span>
+            <span class="confidence-badge" id="confidenceBadge">Awaiting Movement</span>
+          </div>
+
+          <div class="billboard-word" id="billboardWord">
+            RESTING
+          </div>
+
+          <!-- Agentic Natural Language Expansion -->
+          <div class="synthesized-box">
+            <div class="synthesized-label">
+              <span>✨ Agentic Bionic Speech Output (Spoken Aloud):</span>
+            </div>
+            <div class="synthesized-text" id="synthesizedText">
+              "Mouth a silent word in front of the camera to synthesize speech."
+            </div>
           </div>
         </div>
+
+        <!-- Continuous Sentence Accumulator Banner -->
+        <div class="continuous-sentence-banner" id="continuousBanner">
+          <span style="font-size: 1.1rem;">💬</span>
+          <div style="flex: 1;">
+            <span style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8; display: block; color: #a7f3d0;">Ongoing Articulatory Sentence Stream:</span>
+            <span id="continuousSentenceText" style="font-weight: 700; color: #f8fafc; font-size: 0.88rem;">"Awaiting continuous speech input..."</span>
+          </div>
+        </div>
+
+        <!-- Real-Time Continuous Two-Way Conversation Stream -->
+        <div class="conversation-stream-card">
+          <div class="conversation-header">
+            <div class="conversation-title">
+              <span>🗣️ Live Conversational Dialogue Stream</span>
+            </div>
+            <span style="font-size: 0.7rem; font-family: var(--font-mono); color: var(--green-active);">● Interactive Care Agent Active</span>
+          </div>
+
+          <div class="chat-scroll-area" id="chatScrollArea">
+            <div class="chat-bubble chat-ai">
+              <div class="chat-meta">
+                <span>🤖 AI Care Partner</span>
+                <span>Online</span>
+              </div>
+              <div>Hello! I am your real-time SilentVoice conversational partner. Speak silently with your mouth, and I will understand and reply continuously in real-time.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contextual Next-Word Suggestions Bar -->
+        <div class="suggestions-box" id="suggestionsBox">
+          <div class="suggestions-title">
+            <span>⚡ Contextual Next-Word Suggestions (Click or Mouth silently):</span>
+          </div>
+          <div class="suggestions-chips" id="suggestionsChips">
+            <button class="suggestion-chip" data-word="HELP">HELP</button>
+            <button class="suggestion-chip" data-word="WATER">WATER</button>
+            <button class="suggestion-chip" data-word="DOCTOR">DOCTOR</button>
+            <button class="suggestion-chip" data-word="THANK YOU">THANK YOU</button>
+            <button class="suggestion-chip" data-word="PRINCE KUMAR">PRINCE KUMAR</button>
+          </div>
+        </div>
+
+        <!-- Decoded Speech History -->
+        <div class="history-card">
+          <div style="font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px;">
+            Chronological Clinical Speech History
+          </div>
+          <div class="history-list" id="historyList">
+            <div class="history-item">
+              <span><strong>SYSTEM:</strong> Bionic Speech Kernel Initialized</span>
+              <span style="color:#64748b">Online</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
+    </section>
+  </main>
+
+  <!-- Guided 10x Recording Modal -->
+  <div class="recording-modal" id="recordingModal">
+    <div class="modal-content-card">
+      <div style="font-size: 0.8rem; font-weight: 800; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px;">
+        Guided Articulatory Recording Session
+      </div>
+      <div class="modal-word-title" id="modalWordTitle">WATER</div>
+      <div style="font-family: var(--font-mono); font-size: 0.85rem; color: #a855f7; margin-bottom: 8px;" id="modalSampleSubtitle">
+        Recording Sample <span id="modalCurrentSampleNum">1</span> of 10
+      </div>
+
+      <div class="modal-countdown-num" id="modalCountdown">3</div>
+
+      <div style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 16px; min-height: 24px;" id="modalInstruction">
+        Get ready to mouth the word clearly...
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: center;">
+        <button class="btn-bionic btn-secondary" id="btnCancelModal">
+          <span>✕ Cancel Session</span>
+        </button>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- ════════ RECORD MODAL ════════ -->
-<div id="recordModal">
-  <div class="modal-box">
-    <div class="modal-title">🔴 Recording Session</div>
-    <div class="modal-word" id="modalWord">WATER</div>
-    <div class="modal-instruction" id="modalInstruction">Get ready to mouth the word clearly.</div>
-    <div class="countdown-ring" id="modalCountdown" style="display:none">3</div>
-    <div class="sample-dots" id="sampleDots"></div>
-    <div id="modalStatus" style="font-size:.82rem;color:var(--text2);margin-bottom:16px;font-family:var(--mono)">Sample <span id="curSample">0</span> / 10</div>
-    <div class="ctrl-row" style="justify-content:center">
-      <button class="btn btn-ghost" id="btnModalClose">✕ Cancel</button>
-    </div>
-  </div>
-</div>
-
-<script src="/static/js/mediapipe_lips.js"></script>
-<script src="/static/js/app.js"></script>
+  <!-- Client Application Scripts -->
+  <script src="/static/js/mediapipe_lips.js"></script>
+  <script src="/static/js/app.js"></script>
 </body>
 </html>
