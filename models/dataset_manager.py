@@ -188,22 +188,29 @@ def save_user_sample(phrase: str, tensor_data: List[List[float]]) -> str:
 
 def get_dataset_statistics() -> Dict:
     vocab = get_dynamic_vocabulary()
-    stats = {}
+    per_word_counts = {}
+    real_recordings = {}  # Only user-recorded sample_*.npy files (no baselines)
     total_samples = 0
 
     for phrase in vocab:
         folder_name = clean_folder_name(phrase)
         folder_path = os.path.join(DATASET_DIR, folder_name)
         if os.path.exists(folder_path):
-            count = len([f for f in os.listdir(folder_path) if f.endswith(".npy")])
+            all_files  = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
+            real_files = [f for f in all_files if f.startswith("sample_")]
+            count = len(all_files)
+            real  = len(real_files)
         else:
             count = 0
-        stats[phrase] = count
+            real  = 0
+        per_word_counts[phrase] = count
+        real_recordings[phrase] = real
         total_samples += count
 
     return {
         "vocabulary": vocab,
-        "per_word_counts": stats,
+        "per_word_counts": per_word_counts,
+        "real_recordings": real_recordings,
         "total_samples": total_samples,
         "vocabulary_size": len(vocab)
     }
