@@ -1,6 +1,7 @@
 /**
- * SILENTVOICE AI • CLIENT APPLICATION ORCHESTRATOR V2.5
- * MediaPipe GPU Tracking, Real-time Visual Speech Recognition, and Personal Movement Studio
+ * SILENTVOICE AI • CLIENT APPLICATION ORCHESTRATOR V3.0
+ * Continuous Real-Time Visual Speech Recognition, Two-Way Interactive Dialogue,
+ * Fluid Articulatory Streaming, and Personal Movement Studio
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -26,6 +27,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const kpiFpsEl = document.getElementById('kpiFps');
   const historyListEl = document.getElementById('historyList');
 
+  // Continuous Conversation & Suggestions Elements
+  const chatScrollArea = document.getElementById('chatScrollArea');
+  const continuousSentenceText = document.getElementById('continuousSentenceText');
+  const suggestionsChips = document.getElementById('suggestionsChips');
+
   // Standby & Simulation Elements
   const standbyOverlay = document.getElementById('standbyOverlay');
   const btnSimulate = document.getElementById('btnSimulate');
@@ -44,14 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let isCameraActive = false;
   let isVoiceEnabled = true;
-  let cameraInstance = null;
   let localMediaStream = null;
   let faceMesh = null;
   let lastPredictTime = 0;
-  let lastSpokenSentence = "";
+  let lastSpokenWord = "";
+  let lastSpokenTime = 0;
   let frameCount = 0;
   let lastFpsTime = performance.now();
   let latestLandmarks = null;
+  let isProcessingInference = false;
 
   const LIP_OUTER = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61];
   const LIP_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95, 78];
@@ -63,24 +70,123 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('resize', resizeCanvas);
 
   // --------------------------------------------------------------------------
-  // BIONIC TEXT-TO-SPEECH
+  // ROBUST NON-BLOCKING SPEECH QUEUE (CHROMIUM RESILIENT)
   // --------------------------------------------------------------------------
-  function speakSentence(text) {
-    if (!isVoiceEnabled || !('speechSynthesis' in window)) return;
-    if (!text || text === lastSpokenSentence) return;
+  class RobustSpeechQueue {
+    constructor() {
+      this.queue = [];
+      this.isSpeaking = false;
+      this.userVoice = null;
+      this.aiVoice = null;
+      this.initVoices();
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.05;
-    utterance.pitch = 1.0;
-    utterance.lang = 'en-US';
+      // Chromium Watchdog: Prevent browser TTS engine from hanging permanently
+      setInterval(() => {
+        if (window.speechSynthesis && window.speechSynthesis.speaking) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }, 5000);
+    }
 
-    const voices = window.speechSynthesis.getVoices();
-    const naturalVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha')));
-    if (naturalVoice) utterance.voice = naturalVoice;
+    initVoices() {
+      if (!('speechSynthesis' in window)) return;
+      const load = () => {
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices || voices.length === 0) return;
+        this.userVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('David') || v.name.includes('Natural') || v.name.includes('Google US English'))) || voices[0];
+        this.aiVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Zira') || v.name.includes('Samantha') || v.name.includes('Victoria') || v.name.includes('Google UK English Female'))) || voices[0];
+      };
+      load();
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = load;
+      }
+    }
 
-    window.speechSynthesis.speak(utterance);
-    lastSpokenSentence = text;
+    speak(text, sender = 'patient') {
+      if (!isVoiceEnabled || !('speechSynthesis' in window) || !text) return;
+      this.queue.push({ text, sender });
+      this.process();
+    }
+
+    process() {
+      if (this.isSpeaking || this.queue.length === 0) return;
+      const item = this.queue.shift();
+      this.isSpeaking = true;
+
+      try {
+        const utterance = new SpeechSynthesisUtterance(item.text);
+        utterance.rate = item.sender === 'ai' ? 1.05 : 1.0;
+        utterance.pitch = item.sender === 'ai' ? 1.15 : 0.95;
+        utterance.lang = 'en-US';
+
+        if (item.sender === 'ai' && this.aiVoice) utterance.voice = this.aiVoice;
+        else if (item.sender === 'patient' && this.userVoice) utterance.voice = this.userVoice;
+
+        utterance.onend = () => {
+          this.isSpeaking = false;
+          setTimeout(() => this.process(), 120);
+        };
+        utterance.onerror = () => {
+          this.isSpeaking = false;
+          setTimeout(() => this.process(), 120);
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        this.isSpeaking = false;
+      }
+    }
+  }
+
+  const speechQueue = new RobustSpeechQueue();
+
+  // --------------------------------------------------------------------------
+  // TWO-WAY LIVE CONVERSATION STREAM HANDLERS
+  // --------------------------------------------------------------------------
+  function appendChatMessage(sender, text, rawWord = '', conf = 0) {
+    if (!chatScrollArea || !text) return;
+
+    const bubble = document.createElement('div');
+    const timeStr = new Date().toTimeString().split(' ')[0];
+
+    if (sender === 'patient') {
+      bubble.className = 'chat-bubble chat-patient';
+      bubble.innerHTML = `
+        <div class="chat-meta">
+          <span>👤 Patient (${rawWord || 'Silent Speech'})</span>
+          <span>${conf > 0 ? (conf * 100).toFixed(0) + '% • ' : ''}${timeStr}</span>
+        </div>
+        <div>"${text}"</div>
+      `;
+    } else {
+      bubble.className = 'chat-bubble chat-ai';
+      bubble.innerHTML = `
+        <div class="chat-meta">
+          <span>🤖 AI Care Partner</span>
+          <span>${timeStr}</span>
+        </div>
+        <div>${text}</div>
+      `;
+    }
+
+    chatScrollArea.appendChild(bubble);
+    chatScrollArea.scrollTop = chatScrollArea.scrollHeight;
+  }
+
+  function updateSuggestionChips(suggestions) {
+    if (!suggestionsChips || !suggestions || suggestions.length === 0) return;
+    suggestionsChips.innerHTML = '';
+    suggestions.forEach(word => {
+      const btn = document.createElement('button');
+      btn.className = 'suggestion-chip';
+      btn.dataset.word = word;
+      btn.textContent = word;
+      btn.addEventListener('click', () => {
+        runWordSimulation(word);
+      });
+      suggestionsChips.appendChild(btn);
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -136,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // --------------------------------------------------------------------------
-  // MEDIAPIPE FACE MESH RESULTS HANDLER
+  // MEDIAPIPE FACE MESH RESULTS HANDLER (CONTINUOUS STREAMING)
   // --------------------------------------------------------------------------
   function onFaceMeshResults(results) {
     frameCount++;
@@ -155,29 +261,38 @@ document.addEventListener('DOMContentLoaded', () => {
     latestLandmarks = results.multiFaceLandmarks[0];
     drawBionicLipMesh(latestLandmarks);
 
-    // Extract real physical features with true pixel-space metrics
+    // Extract real physical features with true pixel-space metrics & VAD
     const feat = extractor.extractFrameFeatures(latestLandmarks, videoEl.videoWidth || 640, videoEl.videoHeight || 480);
     if (!feat) return;
 
     kpiApertureEl.textContent = `${(feat.metrics.vertical_aperture * 100).toFixed(1)}%`;
     kpiVelocityEl.textContent = `${feat.metrics.velocity.toFixed(3)}`;
 
+    // Reset duplicate lockout when mouth returns to resting closure
+    if (feat.metrics.consecutive_rest >= 5) {
+      lastSpokenWord = "";
+    }
+
     // Update Recording Countdown if recording
     if (extractor.isRecording) {
       recCountdown.textContent = `${30 - extractor.recordingFrames.length}`;
     }
 
-    // Periodic Inference Loop (only when NOT recording training data)
-    if (!extractor.isRecording && extractor.isBufferReady() && (now - lastPredictTime) > 180) {
+    // Continuous Real-Time Inference Loop:
+    // Fires as soon as buffer is ready (>= 14 frames) and not currently busy
+    if (!extractor.isRecording && extractor.isBufferReady() && !isProcessingInference && (now - lastPredictTime) > 160) {
       lastPredictTime = now;
       runInference(extractor.getTemporalTensor());
     }
   }
 
   // --------------------------------------------------------------------------
-  // RUN INFERENCE
+  // RUN CONTINUOUS INFERENCE WITH FLUID BUFFER STRIDING
   // --------------------------------------------------------------------------
   async function runInference(tensor30x12) {
+    if (isProcessingInference) return;
+    isProcessingInference = true;
+
     try {
       const res = await fetch('/api/predict_silent_speech', {
         method: 'POST',
@@ -185,11 +300,14 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ tensor: tensor30x12 })
       });
       const data = await res.json();
-      if (data.status !== 'success') return;
+      if (data.status !== 'success') {
+        isProcessingInference = false;
+        return;
+      }
 
       kpiLatencyEl.textContent = `${data.latency_ms}ms`;
 
-      // Update Heatmap
+      // Update Viseme Softmax Probability Bars
       if (data.probabilities) {
         for (const [word, prob] of Object.entries(data.probabilities)) {
           const key = word.replace(/\s+/g, '');
@@ -203,15 +321,53 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // Handle Active Speech
-      if (data.is_active_speech && data.confidence > 0.65) {
-        billboardCardEl.classList.add('active-speech');
-        billboardWordEl.textContent = data.predicted_word;
-        confidenceBadgeEl.textContent = `${(data.confidence * 100).toFixed(1)}% Conf`;
-        synthesizedTextEl.textContent = `"${data.synthesized_sentence}"`;
+      const now = performance.now();
 
-        speakSentence(data.synthesized_sentence);
-        addHistoryItem(data.predicted_word, data.synthesized_sentence, data.confidence);
+      // Handle Active Speech Detection
+      if (data.is_active_speech && data.confidence >= 0.60 && data.predicted_word !== 'RESTING') {
+        // Prevent duplicate trigger if same word within 1000ms
+        const isDuplicateRecent = (data.predicted_word === lastSpokenWord && (now - lastSpokenTime) < 1000);
+
+        if (!isDuplicateRecent) {
+          lastSpokenWord = data.predicted_word;
+          lastSpokenTime = now;
+
+          // 1. Update Billboard Card
+          billboardCardEl.classList.add('active-speech');
+          billboardWordEl.textContent = data.predicted_word;
+          confidenceBadgeEl.textContent = `${(data.confidence * 100).toFixed(1)}% Conf`;
+          synthesizedTextEl.textContent = `"${data.synthesized_sentence}"`;
+
+          // 2. Update Continuous Running Sentence Accumulator
+          if (continuousSentenceText) {
+            continuousSentenceText.textContent = `"${data.continuous_sentence || data.synthesized_sentence}"`;
+          }
+
+          // 3. Add to Two-Way Conversational Stream (Patient Message)
+          appendChatMessage('patient', data.synthesized_sentence, data.predicted_word, data.confidence);
+          speechQueue.speak(data.synthesized_sentence, 'patient');
+
+          // 4. Add Interactive AI Dialogue Partner Response
+          if (data.ai_dialogue_reply) {
+            setTimeout(() => {
+              appendChatMessage('ai', data.ai_dialogue_reply);
+              speechQueue.speak(data.ai_dialogue_reply, 'ai');
+            }, 300);
+          }
+
+          // 5. Update Contextual Suggestions Bar
+          if (data.suggested_next_words) {
+            updateSuggestionChips(data.suggested_next_words);
+          }
+
+          // 6. Clinical History Record
+          addHistoryItem(data.predicted_word, data.synthesized_sentence, data.confidence);
+
+          // 7. CRITICAL: FLUSH BUFFER TO PREVENT SMEARING!
+          // Discards the completed word from the sliding window so the NEXT word
+          // immediately starts collecting cleanly without chimeric hybrid contamination!
+          extractor.flushBufferAfterDetection(6);
+        }
 
       } else {
         billboardCardEl.classList.remove('active-speech');
@@ -223,10 +379,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch (err) {
       console.error('Inference error:', err);
+    } finally {
+      isProcessingInference = false;
     }
   }
 
   function addHistoryItem(word, sentence, conf) {
+    if (!historyListEl) return;
     const item = document.createElement('div');
     item.className = 'history-item';
     const timeStr = new Date().toTimeString().split(' ')[0];
@@ -248,7 +407,6 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         btnCamera.textContent = '⌛ Starting Camera...';
 
-        // 1. Start Native WebRTC Camera Stream directly
         localMediaStream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
           audio: false
@@ -259,7 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (standbyOverlay) standbyOverlay.style.display = 'none';
         resizeCanvas();
 
-        // 2. Initialize MediaPipe FaceMesh
         faceMesh = new FaceMesh({
           locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
         });
@@ -273,7 +430,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         faceMesh.onResults(onFaceMeshResults);
 
-        // 3. Frame Processing Loop
         isCameraActive = true;
         btnCamera.textContent = '🛑 Stop Bionic Camera';
         btnCamera.classList.replace('btn-primary', 'btn-secondary');
@@ -316,27 +472,31 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --------------------------------------------------------------------------
-  // LIVE SPEECH SIMULATION DEMO (IMMEDIATE VERIFICATION)
+  // CONTINUOUS MULTI-TURN CONVERSATION SIMULATION DEMO
   // --------------------------------------------------------------------------
-  async function runSimulationDemo() {
-    const demoPhrases = ["WATER", "HELP", "THANK YOU", "DOCTOR", "YES"];
-    const chosenPhrase = demoPhrases[Math.floor(Math.random() * demoPhrases.length)];
-
+  async function runWordSimulation(targetPhrase) {
     if (standbyOverlay) standbyOverlay.style.display = 'none';
     resizeCanvas();
 
-    // Synthesize 30-frame realistic articulatory trajectory
     const seqLen = 30;
     const trajectory = [];
+    const isMultiWord = targetPhrase.includes(' ');
+    const numSyllables = isMultiWord ? targetPhrase.split(' ').length : 1;
+
     for (let t = 0; t < seqLen; t++) {
       const p = t / seqLen;
-      const aperture = 0.05 + 0.38 * Math.sin(p * Math.PI);
-      const width = 0.45 + 0.09 * Math.sin(p * Math.PI);
+      let aperture = 0.05;
+      for (let s = 0; s < numSyllables; s++) {
+        const center = (s + 1) / (numSyllables + 1);
+        const sigma = 0.12 / Math.sqrt(numSyllables);
+        aperture += 0.35 * Math.exp(-Math.pow(p - center, 2) / (2 * sigma * sigma));
+      }
+      const width = 0.45 + 0.08 * Math.sin(p * Math.PI * numSyllables);
       const aspect = aperture / (width + 1e-5);
       const outerH = aperture * 1.5 + 0.08;
-      const dh = Math.cos(p * Math.PI) * 0.4;
-      const dw = Math.cos(p * Math.PI) * 0.1;
-      const d2h = -Math.sin(p * Math.PI);
+      const dh = Math.cos(p * Math.PI * numSyllables) * 0.4;
+      const dw = Math.cos(p * Math.PI * numSyllables) * 0.1;
+      const d2h = -Math.sin(p * Math.PI * numSyllables);
 
       trajectory.push([
         aperture, width, aspect, outerH, 0.05, 0.06,
@@ -344,7 +504,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ]);
     }
 
-    // Animate synthetic lips on canvas over 1 second (30 FPS)
+    // Animate synthetic lips on canvas over 700ms (30 FPS)
     let frame = 0;
     const animTimer = setInterval(() => {
       if (frame >= seqLen) {
@@ -358,7 +518,6 @@ document.addEventListener('DOMContentLoaded', () => {
       kpiVelocityEl.textContent = `${trajectory[frame][8].toFixed(3)}`;
       kpiFpsEl.textContent = `30 FPS`;
 
-      // Draw cybernetic lip wireframe on canvas
       ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
       const cx = canvasEl.width / 2;
       const cy = canvasEl.height / 2;
@@ -385,20 +544,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
       ctx.shadowBlur = 0;
       frame++;
-    }, 33);
+    }, 24);
 
-    // Run real-time neural inference & audio speech synthesis
     await runInference(trajectory);
   }
 
-  if (btnSimulate) btnSimulate.addEventListener('click', runSimulationDemo);
-  if (btnQuickDemo) btnQuickDemo.addEventListener('click', runSimulationDemo);
+  // Multi-Turn Interactive Conversation Demo
+  async function runInteractiveConversationDemo() {
+    // Turn 1: "PRINCE KUMAR"
+    await runWordSimulation("PRINCE KUMAR");
+
+    // Turn 2: "HELP" after 2.6 seconds
+    setTimeout(async () => {
+      await runWordSimulation("HELP");
+
+      // Turn 3: "THANK YOU" after another 2.8 seconds
+      setTimeout(async () => {
+        await runWordSimulation("THANK YOU");
+      }, 2800);
+    }, 2600);
+  }
+
+  if (btnSimulate) btnSimulate.addEventListener('click', runInteractiveConversationDemo);
+  if (btnQuickDemo) btnQuickDemo.addEventListener('click', runInteractiveConversationDemo);
+
+  // Initialize existing Suggestion Chips click listeners
+  document.querySelectorAll('.suggestion-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      runWordSimulation(btn.dataset.word || btn.textContent.trim());
+    });
+  });
 
   btnCalibrate.addEventListener('click', () => {
     if (latestLandmarks) {
       extractor.calibrateNeutral(latestLandmarks, videoEl.videoWidth, videoEl.videoHeight);
       btnCalibrate.textContent = '✅ Calibrated!';
-      setTimeout(() => btnCalibrate.textContent = '🎯 Calibrate Neutral Mouth', 1500);
+      setTimeout(() => btnCalibrate.textContent = '🎯 Calibrate', 1500);
     } else {
       alert('Face not detected. Start camera and look directly at lens first.');
     }
@@ -436,7 +617,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const cleanDir = phrase.replace(/\s+/g, '_');
         const cleanKey = phrase.replace(/\s+/g, '');
 
-        // Add to select if not existing
         let exists = false;
         for (let opt of recordWordSelect.options) {
           if (opt.value === phrase) {
@@ -453,7 +633,6 @@ document.addEventListener('DOMContentLoaded', () => {
           recordWordSelect.appendChild(newOpt);
         }
 
-        // Add to live Viseme Bars Heatmap if not existing
         const visemeGrid = document.querySelector('.viseme-bars-grid');
         if (visemeGrid && !document.getElementById(`bar-${cleanKey}`)) {
           const barItem = document.createElement('div');
@@ -511,7 +690,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRecordSample.disabled = true;
     btnRecordSample.textContent = '⌛ Get Ready...';
 
-    // 1-second preparation buffer then record
     setTimeout(() => {
       recordingIndicator.style.display = 'block';
       btnRecordSample.textContent = '🔴 Mouth Now!';
@@ -521,7 +699,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btnRecordSample.disabled = false;
         btnRecordSample.textContent = '⏺️ Record 1s Movement';
 
-        // Send captured tensor to backend to save as dataset/<WORD>/sample_<timestamp>.npy
         try {
           const res = await fetch('/api/record_sample', {
             method: 'POST',

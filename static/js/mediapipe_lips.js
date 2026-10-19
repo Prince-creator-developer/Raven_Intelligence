@@ -1,6 +1,6 @@
 /**
- * SILENTVOICE AI • BIOMECHANICAL LIP KINEMATICS EXTRACTOR V2.2
- * True Pixel-Space Metric Normalization + Live Dataset Recording Engine
+ * SILENTVOICE AI • BIOMECHANICAL LIP KINEMATICS EXTRACTOR V3.0
+ * Continuous Viseme Activity Detection (VAD) & Fluid Articulatory Streaming
  */
 
 class LipKinematicsExtractor {
@@ -16,6 +16,12 @@ class LipKinematicsExtractor {
     this.calibratedNeutralH = 0.05;
     this.calibratedNeutralW = 0.45;
     this.isCalibrated = false;
+
+    // Articulatory Kinematics & Viseme Activity Detection (VAD)
+    this.consecutiveRestFrames = 0;
+    this.consecutiveActiveFrames = 0;
+    this.currentVelocity = 0.0;
+    this.currentAperture = 0.05;
 
     // Data Collection Studio (Record movements per word)
     this.isRecording = false;
@@ -51,6 +57,22 @@ class LipKinematicsExtractor {
     console.log(`[RECORDER] Started recording 30 frames for word: "${word}"`);
   }
 
+  /**
+   * Fluid Buffer Flush:
+   * Discards the completed word from the sliding window immediately upon emission,
+   * retaining only the trailing frames as transition context so the very next word
+   * can be recognized without smearing or delay!
+   */
+  flushBufferAfterDetection(keepFrames = 6) {
+    if (this.buffer.length > keepFrames) {
+      this.buffer = this.buffer.slice(this.buffer.length - keepFrames);
+    }
+  }
+
+  resetBufferToRest() {
+    this.buffer = [];
+  }
+
   extractFrameFeatures(landmarks, width = 640, height = 480) {
     if (!landmarks || landmarks.length < 468) return null;
 
@@ -82,6 +104,9 @@ class LipKinematicsExtractor {
     this.prevW = w;
     this.prevDh = dh;
 
+    this.currentAperture = h;
+    this.currentVelocity = Math.abs(dh);
+
     const zProtrusion = ((landmarks[13].z || 0) - (landmarks[168].z || 0)) * width / faceW;
 
     // 12-Dimensional Kinematic Articulatory Vector
@@ -89,6 +114,16 @@ class LipKinematicsExtractor {
       h, w, aspect, outerH, upperThick, lowerThick,
       cornerY, area, dh, dw, d2h, zProtrusion
     ];
+
+    // Viseme Activity Detection (VAD)
+    const isMoving = Math.abs(dh) > 0.012 || h > (this.calibratedNeutralH * 1.25);
+    if (isMoving) {
+      this.consecutiveActiveFrames++;
+      this.consecutiveRestFrames = 0;
+    } else {
+      this.consecutiveRestFrames++;
+      this.consecutiveActiveFrames = 0;
+    }
 
     // Handle Active Recording Mode
     if (this.isRecording) {
@@ -102,7 +137,7 @@ class LipKinematicsExtractor {
       }
     }
 
-    // Sliding window buffer for real-time inference
+    // Sliding window buffer for real-time continuous inference
     this.buffer.push(featureVector);
     if (this.buffer.length > this.maxFrames) {
       this.buffer.shift();
@@ -114,18 +149,32 @@ class LipKinematicsExtractor {
         vertical_aperture: h,
         horizontal_aperture: w,
         velocity: Math.abs(dh),
-        is_moving: Math.abs(dh) > 0.015 || h > (this.calibratedNeutralH * 1.35)
+        is_moving: isMoving,
+        is_calibrated: this.isCalibrated,
+        consecutive_rest: this.consecutiveRestFrames,
+        consecutive_active: this.consecutiveActiveFrames
       },
       recordingProgress: this.isRecording ? (this.recordingFrames.length / this.maxFrames) : 0
     };
   }
 
   isBufferReady() {
-    return this.buffer.length === this.maxFrames;
+    // Allows fluid prediction once at least 14 frames have accumulated, with zero blocking
+    return this.buffer.length >= 14;
   }
 
   getTemporalTensor() {
-    return this.buffer;
+    if (this.buffer.length >= this.maxFrames) {
+      return this.buffer.slice(-this.maxFrames);
+    }
+    // Front-pad with earliest frame to always deliver a complete (30, 12) temporal tensor
+    const padded = [];
+    const missing = this.maxFrames - this.buffer.length;
+    const padFrame = this.buffer.length > 0 ? this.buffer[0] : new Array(12).fill(0);
+    for (let i = 0; i < missing; i++) {
+      padded.push(padFrame);
+    }
+    return padded.concat(this.buffer);
   }
 }
 

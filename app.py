@@ -126,7 +126,7 @@ async def serve_index(request: Request):
     vocab = stats.get("vocabulary", [])
 
     # 1. Direct Jinja2 template string rendering (bulletproof on Vercel, eliminates TemplateNotFound)
-    raw_html = INDEX_HTML_CACHE or get_template_html()
+    raw_html = get_template_html() or INDEX_HTML_CACHE
     if raw_html:
         try:
             t = jinja2.Template(raw_html)
@@ -182,6 +182,11 @@ async def predict_silent_speech(req: TemporalTensorRequest):
         "predicted_word": pred_word,
         "confidence": round(confidence, 4),
         "synthesized_sentence": agent_output["synthesized_sentence"] or pred_word,
+        "ai_dialogue_reply": agent_output.get("ai_dialogue_reply", ""),
+        "suggested_next_words": agent_output.get("suggested_next_words", []),
+        "continuous_sentence": agent_output.get("continuous_sentence", ""),
+        "patient_name": agent_output.get("patient_name", "Patient"),
+        "conversation_turn": agent_output.get("conversation_turn", 0),
         "is_active_speech": agent_output["is_active_speech"],
         "compound_detected": agent_output["compound_detected"],
         "probabilities": prob_dict,
