@@ -6,7 +6,18 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const extractor = new window.LipKinematicsExtractor();
+  const extractor = (typeof window.LipKinematicsExtractor === 'function')
+    ? new window.LipKinematicsExtractor()
+    : {
+        buffer: [],
+        maxFrames: 30,
+        isRecording: false,
+        isCalibrated: false,
+        distance: () => 1.0,
+        calibrateNeutral: () => {},
+        pushFrame: () => ({ aperture: 0.05, velocity: 0.0, isSpeaking: false }),
+        getCurrentTensor30x12: () => Array(30).fill(Array(12).fill(0))
+      };
   const REQUIRED_SAMPLES = 10;
 
   // DOM Elements — Permanent Vision Column

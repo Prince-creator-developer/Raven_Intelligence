@@ -40,10 +40,20 @@ except ImportError:
     VisemeTemporalNet = None
     train_custom_100_epochs = None
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI(
     title="SilentVoice AI • Neural Silent Speech Interface",
     description="Samsung Innovation Campus (SIC-AI) • Dynamic Articulatory Kinematics",
     version="4.1.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")

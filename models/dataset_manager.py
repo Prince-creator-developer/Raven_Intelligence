@@ -17,8 +17,15 @@ except (ImportError, ModuleNotFoundError):
     DataLoader = None
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATASET_DIR = os.path.join(BASE_DIR, "dataset")
-VOCAB_FILE = os.path.join(BASE_DIR, "models", "vocab.json")
+
+# Vercel Serverless environment handling: write operations must target /tmp
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+if IS_VERCEL:
+    DATASET_DIR = "/tmp/dataset"
+    VOCAB_FILE = "/tmp/vocab.json"
+else:
+    DATASET_DIR = os.path.join(BASE_DIR, "dataset")
+    VOCAB_FILE = os.path.join(BASE_DIR, "models", "vocab.json")
 
 DEFAULT_VOCABULARY = [
     "RESTING",
