@@ -104,6 +104,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Articulatory Gesture Lifecycle (Zero Repeat Noise, Rapid Unlocking Flow)
   let gestureState = 'REST'; // 'REST' | 'ARTICULATING' | 'LOCKOUT'
   let gestureFrames = 0;
+  let closureFrames = 0;
   let peakAperture = 0;
   let consecutiveRestCount = 0;
   let lastEmittedWord = "";
@@ -314,15 +315,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const ap = feat.metrics.vertical_aperture;
     const vel = feat.metrics.velocity;
-    const neutral = extractor.calibratedNeutralH || 0.05;
+    const neutral = Math.max(extractor.calibratedNeutralH || 0.008, 0.008);
 
-    // Physical Movement & Inner Dot Separation Detection:
-    // Slightly higher threshold (1.35x baseline) to reject micro-twitches and resting jitter
-    const isMouthOpen = ap > (neutral * 1.35);
-    const isMouthMoving = vel > 0.016;
-    const isLipActive = isMouthOpen || isMouthMoving || (gestureState === 'ARTICULATING');
+    // Robust Physical Speech Opening Detection:
+    // Requires the inner lips (landmarks 13 & 14) to open beyond resting threshold (at least 2.0% aperture)
+    const openThreshold = Math.max(neutral * 1.8, 0.020);
+    const isMouthOpen = ap > openThreshold;
+    const isMouthMoving = vel > 0.028 && ap > (openThreshold * 0.7);
+    const isLipActive = isMouthOpen || isMouthMoving;
 
-    // Render Bionic Lip Mesh with immediate green/blue color
+    // Render Bionic Lip Mesh: Green when mouth physically open/moving; Crisp Blue at rest/pause
     drawBionicLipMesh(latestLandmarks, isLipActive);
 
     kpiApertureEl.textContent = `${(ap * 100).toFixed(1)}%`;
@@ -338,39 +340,64 @@ document.addEventListener('DOMContentLoaded', () => {
     // ARTICULATORY GESTURE LIFECYCLE (STABLE, SINGLE-WORD RECOGNITION)
     // ─────────────────────────────────────────────────────────────
     if (gestureState === 'REST') {
-      if (isMouthOpen || isMouthMoving) {
-        // Speech onset
+      if (isMouthOpen) {
+        // Real speech onset: mouth physically opened
         gestureState = 'ARTICULATING';
         gestureFrames = 1;
+        closureFrames = 0;
         peakAperture = ap;
+      } else {
+        // Speaker is resting / paused
+        consecutiveRestCount++;
+        // If speaker has paused for > 2 seconds, clear active speech display to Resting baseline
+        if (consecutiveRestCount > 24 && billboardCardEl.classList.contains('active-speech')) {
+          billboardCardEl.classList.remove('active-speech');
+          billboardWordEl.textContent = 'RESTING';
+          confidenceBadgeEl.textContent = 'Resting Baseline';
+          synthesizedTextEl.textContent = '"(Resting baseline - mouth closed)"';
+        }
       }
     } else if (gestureState === 'ARTICULATING') {
       gestureFrames++;
       if (ap > peakAperture) peakAperture = ap;
 
-      // Complete word gesture only when:
-      // Minimum duration 20 frames with return to rest baseline, OR maximum gesture window (34 frames)
-      const mouthReturnedToRest = (ap < neutral * 1.25 && vel < 0.014);
-      const gestureCompleted = (gestureFrames >= 20 && (mouthReturnedToRest || ap < peakAperture * 0.60)) || (gestureFrames >= 34);
+      // Word gesture completion rules:
+      // 1. Peak aperture must have reached meaningful speech opening (>= 0.024)
+      // 2. Mouth must return to rest baseline for at least 3 consecutive frames
+      const hasMeaningfulOpening = peakAperture >= Math.max(openThreshold * 1.25, 0.024);
+      const isClosedNow = (ap < openThreshold && vel < 0.020);
+
+      if (isClosedNow) {
+        closureFrames++;
+      } else {
+        closureFrames = 0;
+      }
+
+      const gestureCompleted = (gestureFrames >= 12 && hasMeaningfulOpening && closureFrames >= 3) || (gestureFrames >= 36);
 
       if (gestureCompleted) {
-        // Trigger inference on complete 30-frame tensor
-        if (extractor.isBufferReady() && !isProcessingInference) {
+        // Trigger inference ONLY if there was real speech opening!
+        if (hasMeaningfulOpening && extractor.isBufferReady() && !isProcessingInference) {
           runInference(extractor.getTemporalTensor());
         }
         gestureState = 'LOCKOUT';
         consecutiveRestCount = 0;
+        closureFrames = 0;
+      } else if (gestureFrames >= 20 && !hasMeaningfulOpening) {
+        // Abort false alarm: mouth never actually opened for speech
+        gestureState = 'REST';
+        closureFrames = 0;
       }
     } else if (gestureState === 'LOCKOUT') {
       // Require speech lockout to ensure speaker has paused before next word
       consecutiveRestCount++;
-      if (!isMouthOpen || vel < 0.014) {
-        if (consecutiveRestCount >= 10) {
+      if (!isMouthOpen && vel < 0.020) {
+        if (consecutiveRestCount >= 8) {
           gestureState = 'REST';
           consecutiveRestCount = 0;
         }
       } else {
-        if (consecutiveRestCount >= 16) {
+        if (consecutiveRestCount >= 14) {
           gestureState = 'REST';
           consecutiveRestCount = 0;
         }
@@ -555,11 +582,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       } else {
         billboardCardEl.classList.remove('active-speech');
-        if (data.predicted_word === 'RESTING') {
-          billboardWordEl.textContent = 'RESTING';
-          confidenceBadgeEl.textContent = 'Resting Baseline';
-          synthesizedTextEl.textContent = '"(Resting baseline - mouth closed)"';
-        }
+        billboardWordEl.textContent = 'RESTING';
+        confidenceBadgeEl.textContent = 'Resting Baseline';
+        synthesizedTextEl.textContent = '"(Resting baseline - mouth closed)"';
       }
 
     } catch (err) {

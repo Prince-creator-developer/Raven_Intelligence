@@ -57,7 +57,8 @@ class LipKinematicsExtractor {
     const faceH = this.distance(landmarks[10], landmarks[152], width, height) || 1.0;
     const faceW = this.distance(landmarks[234], landmarks[454], width, height) || 1.0;
 
-    this.calibratedNeutralH = this.distance(landmarks[13], landmarks[14], width, height) / faceH;
+    const measuredH = this.distance(landmarks[13], landmarks[14], width, height) / faceH;
+    this.calibratedNeutralH = Math.max(measuredH, 0.005);
     this.calibratedNeutralW = this.distance(landmarks[78], landmarks[308], width, height) / faceW;
     this.isCalibrated = true;
     console.log('[CALIBRATION] Baseline set: Height =', this.calibratedNeutralH.toFixed(3), 'Width =', this.calibratedNeutralW.toFixed(3));
@@ -138,7 +139,8 @@ class LipKinematicsExtractor {
     ];
 
     // Viseme Activity Detection (VAD)
-    const isMoving = Math.abs(dh) > 0.012 || h > (this.calibratedNeutralH * 1.25);
+    const speechThreshold = Math.max(this.calibratedNeutralH * 1.8, 0.020);
+    const isMoving = (Math.abs(dh) > 0.028 && h > speechThreshold * 0.7) || (h > speechThreshold);
     if (isMoving) {
       this.consecutiveActiveFrames++;
       this.consecutiveRestFrames = 0;

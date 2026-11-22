@@ -300,7 +300,7 @@ async def predict_silent_speech(req: TemporalTensorRequest):
         "status": "success",
         "predicted_word": pred_word,
         "confidence": round(confidence, 4),
-        "synthesized_sentence": agent_output.get("synthesized_sentence") or pred_word,
+        "synthesized_sentence": agent_output.get("synthesized_sentence", "") if agent_output.get("is_active_speech") else "",
         "ai_dialogue_reply": agent_output.get("ai_dialogue_reply", ""),
         "suggested_next_words": agent_output.get("suggested_next_words", []),
         "continuous_sentence": agent_output.get("continuous_sentence", ""),
