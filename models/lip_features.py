@@ -103,6 +103,30 @@ def _area(poly):
     return 0.5 * np.abs(np.sum(x * np.roll(y, -1, 1) - np.roll(x, -1, 1) * y, axis=1))
 
 
+def landmarks_to_12d(pts):
+    p = normalize_landmarks(pts)
+    xy = p[..., :2]
+    OU, OL, IU, IL = xy[:, 0:11], xy[:, 11:22], xy[:, 22:33], xy[:, 33:44]
+    dist = lambda a, b: np.linalg.norm(a - b, axis=-1)
+
+    inner_c = dist(IU[:, 5], IL[:, 5])
+    inner_l = (dist(IU[:, 2], IL[:, 2]) + dist(IU[:, 3], IL[:, 3])) / 2
+    inner_r = (dist(IU[:, 7], IL[:, 7]) + dist(IU[:, 8], IL[:, 8])) / 2
+    outer_c = dist(OU[:, 5], OL[:, 5])
+    width = dist(xy[:, 0], xy[:, 10])
+    aspect = inner_c / (width + EPS)
+    inner_area = _area(np.concatenate([IU, IL[:, 9:0:-1]], 1))
+    outer_area = _area(np.concatenate([OU, OL[:, 9:0:-1]], 1))
+    protrusion = (p[:, 5, 2] + p[:, 16, 2]) / 2 - (p[:, 0, 2] + p[:, 10, 2]) / 2
+    upper_thick = dist(OU[:, 5], IU[:, 5])
+    lower_thick = dist(OL[:, 5], IL[:, 5])
+    center_y = (OU[:, 5, 1] + OL[:, 5, 1] + IU[:, 5, 1] + IL[:, 5, 1]) / 4
+
+    feats = [inner_c, inner_l, inner_r, outer_c, width, aspect, inner_area, outer_area,
+             protrusion, upper_thick, lower_thick, center_y]
+    return np.nan_to_num(np.stack(feats, 1), nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+
+
 def landmarks_to_features(pts):
     p = normalize_landmarks(pts)
     xy = p[..., :2]
@@ -140,7 +164,12 @@ def prepare_features(arr, fmt, seq_len=30):
     """Raw recorded array -> (seq_len, D) model input."""
     arr = resample_time(arr, seq_len)
     if fmt == "legacy12":
+        if arr.ndim == 3 and arr.shape[1] == 44:
+            return landmarks_to_12d(arr)
         return np.nan_to_num(arr).astype(np.float32)
     if fmt == "landmarks44":
+        if arr.ndim == 2 and arr.shape[1] == 12:
+            # Cannot magically create 44 landmarks from 12 apertures, return arr
+            return np.nan_to_num(arr).astype(np.float32)
         return landmarks_to_features(arr)
     raise ValueError(f"unknown format {fmt!r}")

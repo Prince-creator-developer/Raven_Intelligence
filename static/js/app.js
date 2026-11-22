@@ -317,9 +317,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const neutral = extractor.calibratedNeutralH || 0.05;
 
     // Physical Movement & Inner Dot Separation Detection:
-    // Landmark 13 and 14 separation (ap > neutral * 1.25) or movement velocity:
-    const isMouthOpen = ap > (neutral * 1.25);
-    const isMouthMoving = vel > 0.014;
+    // Slightly higher threshold (1.35x baseline) to reject micro-twitches and resting jitter
+    const isMouthOpen = ap > (neutral * 1.35);
+    const isMouthMoving = vel > 0.016;
     const isLipActive = isMouthOpen || isMouthMoving || (gestureState === 'ARTICULATING');
 
     // Render Bionic Lip Mesh with immediate green/blue color
@@ -335,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // ARTICULATORY GESTURE LIFECYCLE (ACCURATE SPEECH FLOW)
+    // ARTICULATORY GESTURE LIFECYCLE (STABLE, SINGLE-WORD RECOGNITION)
     // ─────────────────────────────────────────────────────────────
     if (gestureState === 'REST') {
       if (isMouthOpen || isMouthMoving) {
@@ -348,9 +348,10 @@ document.addEventListener('DOMContentLoaded', () => {
       gestureFrames++;
       if (ap > peakAperture) peakAperture = ap;
 
-      // Complete word gesture when:
-      // Minimum duration 16 frames (~530ms) with closure/velocity dip, OR maximum window 28 frames (~930ms)
-      const gestureCompleted = (gestureFrames >= 16 && (ap < peakAperture * 0.75 || vel < 0.012)) || (gestureFrames >= 28);
+      // Complete word gesture only when:
+      // Minimum duration 20 frames with return to rest baseline, OR maximum gesture window (34 frames)
+      const mouthReturnedToRest = (ap < neutral * 1.25 && vel < 0.014);
+      const gestureCompleted = (gestureFrames >= 20 && (mouthReturnedToRest || ap < peakAperture * 0.60)) || (gestureFrames >= 34);
 
       if (gestureCompleted) {
         // Trigger inference on complete 30-frame tensor
@@ -361,16 +362,15 @@ document.addEventListener('DOMContentLoaded', () => {
         consecutiveRestCount = 0;
       }
     } else if (gestureState === 'LOCKOUT') {
-      // Rapid unlocking: only requires 3 frames (~100ms) of slight dip or rest
-      if (!isMouthOpen || vel < 0.012) {
-        consecutiveRestCount++;
-        if (consecutiveRestCount >= 3) {
-          gestureState = 'REST'; // Immediately ready for next word in continuous flow!
+      // Require speech lockout to ensure speaker has paused before next word
+      consecutiveRestCount++;
+      if (!isMouthOpen || vel < 0.014) {
+        if (consecutiveRestCount >= 10) {
+          gestureState = 'REST';
           consecutiveRestCount = 0;
         }
       } else {
-        consecutiveRestCount++;
-        if (consecutiveRestCount >= 8) {
+        if (consecutiveRestCount >= 16) {
           gestureState = 'REST';
           consecutiveRestCount = 0;
         }
@@ -525,11 +525,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const now = performance.now();
 
-      // Handle Active Speech Recognition
-      if (data.is_active_speech && data.confidence >= 0.50 && data.predicted_word !== 'RESTING') {
-        const isDuplicateRecent = (data.predicted_word === lastEmittedWord && (now - lastEmittedTime) < 2200);
+      // Handle Active Speech Recognition (Robust Single-Word Articulation)
+      if (data.is_active_speech && data.confidence >= 0.60 && data.predicted_word !== 'RESTING') {
+        const isCooldownActive = (now - lastEmittedTime) < 1800;
+        const isDuplicateRecent = (data.predicted_word === lastEmittedWord && (now - lastEmittedTime) < 2500);
 
-        if (!isDuplicateRecent) {
+        if (!isCooldownActive && !isDuplicateRecent) {
           lastEmittedWord = data.predicted_word;
           lastEmittedTime = now;
 
@@ -548,8 +549,8 @@ document.addEventListener('DOMContentLoaded', () => {
           // 4. Clinical Speech Activity Stream
           appendSpeechLog(data.predicted_word, data.confidence);
 
-          // 5. Fluid buffer stride (preserves transition context for smooth continuous flow)
-          extractor.flushBufferAfterDetection(6);
+          // 5. Complete Buffer Flush: Reset window so current word frames do not bleed into next detection
+          extractor.resetBufferToRest();
         }
 
       } else {

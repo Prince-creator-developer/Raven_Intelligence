@@ -236,8 +236,14 @@ async def serve_index(request: Request):
 @app.post("/api/predict_silent_speech")
 async def predict_silent_speech(req: TemporalTensorRequest):
     t0 = time.perf_counter()
-    raw_data = req.landmarks if req.landmarks is not None else req.tensor
-    if raw_data is None:
+    expected_fmt = model_meta.get("feature_format", "legacy12") if model_meta else "legacy12"
+    if expected_fmt == "landmarks44" and req.landmarks is not None:
+        raw_data = req.landmarks
+    elif req.tensor is not None:
+        raw_data = req.tensor
+    elif req.landmarks is not None:
+        raw_data = req.landmarks
+    else:
         return JSONResponse({"status": "error", "message": "Expected 'landmarks' or 'tensor' in request payload."}, status_code=400)
 
     data = np.array(raw_data, dtype=np.float32)

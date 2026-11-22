@@ -94,18 +94,22 @@ def load_model(models_dir=MODELS_DIR, device="cpu"):
 def predict(model, meta, arr, device="cpu"):
     """arr: (T,12) legacy or (T,44,2|3) lip landmarks. Returns (probs ndarray, best_class_name)."""
     arr = np.asarray(arr, dtype=np.float32)
-    fmt = LF.detect_format(arr)
-    expected_fmt = meta.get("feature_format", "legacy12")
-    if fmt != expected_fmt:
-        # If model expects landmarks44 but received legacy12, or vice-versa, fall back gracefully if possible
-        if fmt is None:
-            raise ValueError(f"model expects {expected_fmt}, got array shape {arr.shape}")
-    seq_len = meta.get("seq_len", 30)
-    feats = LF.prepare_features(arr, fmt, seq_len)
+    expected_fmt = meta.get("feature_format", "legacy12") if meta else "legacy12"
+    seq_len = meta.get("seq_len", 30) if meta else 30
+
+    feats = LF.prepare_features(arr, expected_fmt, seq_len)
+    in_dim = getattr(model, "input_dim", feats.shape[-1])
+    if feats.shape[-1] != in_dim:
+        if feats.shape[-1] > in_dim:
+            feats = feats[:, :in_dim]
+        else:
+            pad = np.zeros((feats.shape[0], in_dim - feats.shape[-1]), dtype=np.float32)
+            feats = np.concatenate([feats, pad], axis=-1)
+
     x = torch.from_numpy(feats).unsqueeze(0).to(device)
     logits = model(x)
     probs = torch.softmax(logits, dim=-1)[0].cpu().numpy()
-    classes = meta.get("classes", VOCABULARY)
+    classes = meta.get("classes", VOCABULARY) if meta else VOCABULARY
     pred_idx = int(probs.argmax())
     best_class = classes[pred_idx] if pred_idx < len(classes) else "UNKNOWN"
     return probs, best_class

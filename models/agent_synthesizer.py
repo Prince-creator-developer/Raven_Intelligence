@@ -13,18 +13,21 @@ class AgenticBionicSynthesizer:
         self.patient_name: Optional[str] = None
         self.last_word: Optional[str] = None
         self.last_word_time: float = 0.0
+        self.had_intervening_rest: bool = True
         self.continuous_transcript: List[str] = []
         self.conversation_turn: int = 0
 
     def clear_transcript(self):
         self.continuous_transcript = []
         self.last_word = None
+        self.had_intervening_rest = True
 
     def process_decoded_word(self, word: str, confidence: float) -> Dict:
         now = time.time()
-        
-        # Filter resting / low confidence
-        if word == "RESTING" or confidence < 0.50:
+
+        # If resting baseline is observed, record that the speaker paused
+        if word == "RESTING":
+            self.had_intervening_rest = True
             return {
                 "raw_word": word,
                 "confidence": round(confidence, 3),
@@ -36,8 +39,39 @@ class AgenticBionicSynthesizer:
                 "continuous_sentence": " ".join(self.continuous_transcript)
             }
 
-        # Temporal debounce: Prevent immediate double-triggering within 1.5s for the same word
-        if word == self.last_word and (now - self.last_word_time) < 1.5:
+        # Filter low confidence predictions (< 0.60) to reject transitional artifacts
+        if confidence < 0.60:
+            return {
+                "raw_word": word,
+                "confidence": round(confidence, 3),
+                "is_active_speech": False,
+                "synthesized_sentence": "",
+                "ai_dialogue_reply": "",
+                "compound_detected": False,
+                "suggested_next_words": [],
+                "continuous_sentence": " ".join(self.continuous_transcript)
+            }
+
+        time_since_last = now - self.last_word_time
+
+        # Global Utterance Debounce:
+        # Prevent 1 word from triggering 2-3 words. An articulation requires at least 1.8s
+        # unless an explicit pause/rest was observed, in which case 1.3s is sufficient.
+        min_cooldown = 1.3 if self.had_intervening_rest else 1.8
+        if time_since_last < min_cooldown:
+            return {
+                "raw_word": word,
+                "confidence": round(confidence, 3),
+                "is_active_speech": False,
+                "synthesized_sentence": "",
+                "ai_dialogue_reply": "",
+                "compound_detected": False,
+                "suggested_next_words": [],
+                "continuous_sentence": " ".join(self.continuous_transcript)
+            }
+
+        # Prevent duplicate identical word within 2.5 seconds
+        if word == self.last_word and time_since_last < 2.5:
             return {
                 "raw_word": word,
                 "confidence": round(confidence, 3),
@@ -60,6 +94,7 @@ class AgenticBionicSynthesizer:
 
         self.last_word = clean_word
         self.last_word_time = now
+        self.had_intervening_rest = False
         self.conversation_turn += 1
 
         return {
