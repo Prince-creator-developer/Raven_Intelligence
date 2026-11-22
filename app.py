@@ -32,12 +32,14 @@ from dataset_manager import (
 # Optional PyTorch for local VS Code training
 try:
     import torch
-    from lip_model import VisemeTemporalNet
-    from train_custom import train_custom_100_epochs
+    from lip_model import VisemeTemporalNet, load_model, predict as predict_fn
+    from train_custom import train as train_custom_100_epochs
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
     VisemeTemporalNet = None
+    load_model = None
+    predict_fn = None
     train_custom_100_epochs = None
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -94,28 +96,44 @@ def get_trained_model_classes(expected_num_classes: Optional[int] = None) -> Lis
 active_vocabulary: List[str] = get_dynamic_vocabulary()
 active_model_classes: List[str] = get_trained_model_classes()
 torch_model = None
+model_meta = None
 numpy_model: Optional[NumpyVisemeNet] = None
 REQUIRED_SAMPLES_PER_WORD = 10
 
 
 def initialize_or_reload_model():
-    global torch_model, numpy_model, active_vocabulary, active_model_classes
+    global torch_model, model_meta, numpy_model, active_vocabulary, active_model_classes
     active_vocabulary = get_dynamic_vocabulary()
 
-    # Determine num_classes from weights file if present
+    # 1. Try loading modern VisemeTemporalNet if available
+    if HAS_TORCH and load_model is not None:
+        try:
+            m, meta = load_model(MODELS_DIR, device=DEVICE)
+            if m is not None:
+                torch_model = m
+                model_meta = meta
+                active_model_classes = meta.get("classes", active_vocabulary)
+                print(f"[TORCH LOADED] Modern VisemeTemporalNet loaded ({meta.get('feature_format', 'auto')}) for {len(active_model_classes)} classes: {active_model_classes}")
+                return
+        except Exception as e:
+            print(f"[TORCH WARNING] load_model notice: {e}")
+
+    # 2. Determine num_classes from weights file if present
     detected_num_classes = None
     if os.path.exists(NPZ_WEIGHTS_PATH):
         try:
             w = np.load(NPZ_WEIGHTS_PATH)
             if "fc2.weight" in w:
                 detected_num_classes = w["fc2.weight"].shape[0]
+            elif "head.weight" in w:
+                detected_num_classes = w["head.weight"].shape[0]
         except Exception:
             pass
 
     active_model_classes = get_trained_model_classes(detected_num_classes)
     num_classes = len(active_model_classes)
 
-    # 1. Pure NumPy model (ideal for serverless Vercel, zero CUDA bloat)
+    # Pure NumPy model fallback
     if os.path.exists(NPZ_WEIGHTS_PATH):
         try:
             numpy_model = NumpyVisemeNet(NPZ_WEIGHTS_PATH)
@@ -123,15 +141,14 @@ def initialize_or_reload_model():
         except Exception as e:
             print(f"[NUMPY WARNING] Could not load .npz weights: {e}")
 
-    # 2. PyTorch model (for local VS Code training and inference)
+    # Legacy PyTorch model fallback
     if HAS_TORCH and VisemeTemporalNet is not None:
         try:
-            torch_model = VisemeTemporalNet(input_dim=12, hidden_dim=64, num_classes=num_classes).to(DEVICE)
+            torch_model = VisemeTemporalNet(num_classes=num_classes, input_dim=12).to(DEVICE)
             if os.path.exists(WEIGHTS_PATH):
                 state_dict = torch.load(WEIGHTS_PATH, map_location=DEVICE)
-                if state_dict["fc2.weight"].shape[0] == num_classes:
-                    torch_model.load_state_dict(state_dict)
-                    print(f"[TORCH LOADED] Loaded PyTorch weights for {num_classes} classes: {active_model_classes}")
+                torch_model.load_state_dict(state_dict, strict=False)
+                print(f"[TORCH LOADED] Loaded weights for {num_classes} classes: {active_model_classes}")
             torch_model.eval()
         except Exception as e:
             print(f"[TORCH WARNING] Model init: {e}")
@@ -144,12 +161,14 @@ initialize_or_reload_model()
 # REQUEST SCHEMAS
 # ──────────────────────────────────────────────
 class TemporalTensorRequest(BaseModel):
-    tensor: List[List[float]]
+    tensor: Optional[List[List[float]]] = None
+    landmarks: Optional[List[List[List[float]]]] = None
 
 class RecordSampleRequest(BaseModel):
     word: str
-    tensor: List[List[float]]
     sample_num: Optional[int] = None
+    tensor: Optional[List[List[float]]] = None
+    landmarks: Optional[List[List[List[float]]]] = None
 
 class AddWordRequest(BaseModel):
     phrase: str
@@ -217,33 +236,59 @@ async def serve_index(request: Request):
 @app.post("/api/predict_silent_speech")
 async def predict_silent_speech(req: TemporalTensorRequest):
     t0 = time.perf_counter()
-    data = np.array(req.tensor, dtype=np.float32)
+    raw_data = req.landmarks if req.landmarks is not None else req.tensor
+    if raw_data is None:
+        return JSONResponse({"status": "error", "message": "Expected 'landmarks' or 'tensor' in request payload."}, status_code=400)
 
-    if data.shape != (30, 12):
-        return JSONResponse({"status": "error", "message": f"Expected shape (30, 12), got {data.shape}"}, status_code=400)
+    data = np.array(raw_data, dtype=np.float32)
 
     probs = None
     attn_list = []
+    pred_word = "RESTING"
 
-    if numpy_model is not None:
-        probs, attn_raw = numpy_model.predict(data)
-        attn_list = attn_raw.tolist() if hasattr(attn_raw, "tolist") else list(attn_raw)
-    elif HAS_TORCH and torch_model is not None:
-        inp = torch.tensor(data).unsqueeze(0).to(DEVICE)
-        with torch.no_grad():
-            probabilities, attn_weights = torch_model(inp)
-            probs = probabilities[0].cpu().numpy()
-            attn_list = attn_weights[0].squeeze().cpu().numpy().tolist()
-    else:
+    # 1. Use modern PyTorch model if loaded
+    if HAS_TORCH and torch_model is not None and model_meta is not None and predict_fn is not None:
+        try:
+            probs, best_class = predict_fn(torch_model, model_meta, data, device=DEVICE)
+            pred_word = best_class
+        except Exception as e:
+            print(f"[PREDICT WARNING] Modern torch predict notice: {e}")
+            probs = None
+
+    # 2. Fall back to NumPy / legacy inference if data is (30, 12)
+    if probs is None:
+        if data.ndim == 2 and data.shape == (30, 12):
+            if numpy_model is not None:
+                probs, attn_raw = numpy_model.predict(data)
+                attn_list = attn_raw.tolist() if hasattr(attn_raw, "tolist") else list(attn_raw)
+            elif HAS_TORCH and torch_model is not None:
+                inp = torch.tensor(data).unsqueeze(0).to(DEVICE)
+                with torch.no_grad():
+                    out = torch_model(inp)
+                    if isinstance(out, tuple):
+                        probabilities, attn_weights = out
+                        probs = probabilities[0].cpu().numpy()
+                        attn_list = attn_weights[0].squeeze().cpu().numpy().tolist()
+                    else:
+                        probs = torch.softmax(out, dim=-1)[0].cpu().numpy()
+        else:
+            return JSONResponse({
+                "status": "error",
+                "message": f"Shape {data.shape} not compatible with currently loaded model."
+            }, status_code=400)
+
+    if probs is None:
         return JSONResponse({"status": "error", "message": "No model loaded for inference."}, status_code=500)
 
     pred_idx = int(np.argmax(probs))
     confidence = float(probs[pred_idx])
-    pred_word = active_model_classes[pred_idx] if pred_idx < len(active_model_classes) else "RESTING"
+    classes = active_model_classes if active_model_classes else VOCABULARY
+    if pred_idx < len(classes):
+        pred_word = classes[pred_idx]
 
     inference_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
     agent_output = agent_synthesizer.process_decoded_word(pred_word, confidence)
-    prob_dict = {active_model_classes[i]: round(float(probs[i]), 4) for i in range(min(len(active_model_classes), len(probs)))}
+    prob_dict = {classes[i]: round(float(probs[i]), 4) for i in range(min(len(classes), len(probs)))}
 
     return JSONResponse({
         "status": "success",
@@ -260,7 +305,7 @@ async def predict_silent_speech(req: TemporalTensorRequest):
         "probabilities": prob_dict,
         "latency_ms": inference_latency_ms,
         "attention_weights": attn_list,
-        "model_classes": active_model_classes
+        "model_classes": classes
     })
 
 
@@ -273,6 +318,18 @@ async def dataset_stats():
     stats["required_per_word"] = REQUIRED_SAMPLES_PER_WORD
     stats["model_classes"] = active_model_classes
     return JSONResponse(stats)
+
+
+@app.get("/api/train_status")
+async def get_train_status():
+    status_file = os.path.join(MODELS_DIR, "train_status.json")
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                return JSONResponse(json.load(f))
+        except Exception:
+            pass
+    return JSONResponse({"state": "idle", "epochs": 100, "epoch": 0})
 
 
 @app.post("/api/record_sample")
@@ -291,8 +348,12 @@ async def record_sample(req: RecordSampleRequest):
                 "current_count": current_count
             }, status_code=400)
 
+        raw_data = req.landmarks if req.landmarks is not None else req.tensor
+        if raw_data is None:
+            return JSONResponse({"status": "error", "message": "Expected 'landmarks' or 'tensor' in request payload."}, status_code=400)
+
         sample_num = req.sample_num or (current_count + 1)
-        saved_path = save_user_sample(phrase, req.tensor, sample_num=sample_num)
+        saved_path = save_user_sample(phrase, raw_data, sample_num=sample_num)
         new_count = current_count + 1
         stats = get_dataset_statistics()
 
@@ -376,6 +437,11 @@ async def trigger_training():
     try:
         train_result = train_custom_100_epochs()
         initialize_or_reload_model()
+        if isinstance(train_result, dict):
+            train_result.setdefault("training_time_s", train_result.get("total_seconds", 0.0))
+            rep_acc = train_result.get("val_accuracy", train_result.get("train_accuracy", 0.0))
+            train_result.setdefault("best_val_acc", round(rep_acc * 100, 1) if rep_acc <= 1.0 else rep_acc)
+            train_result.setdefault("vocabulary", active_model_classes)
         return JSONResponse({
             "status": "success",
             "training_result": train_result,

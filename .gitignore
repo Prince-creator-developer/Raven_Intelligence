@@ -31,3 +31,5 @@ ENV/
 *.swo
 .DS_Store
 *.log
+models/runs/
+models/train_status.json

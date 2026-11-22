@@ -477,10 +477,14 @@ document.addEventListener('DOMContentLoaded', () => {
     isProcessingInference = true;
 
     try {
+      const landmarks44 = (typeof extractor.getTemporalLandmarks === 'function') ? extractor.getTemporalLandmarks() : null;
+      const payload = { tensor: tensor30x12 };
+      if (landmarks44) payload.landmarks = landmarks44;
+
       const res = await fetch('/api/predict_silent_speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tensor: tensor30x12 })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.status !== 'success') {
@@ -694,11 +698,13 @@ document.addEventListener('DOMContentLoaded', () => {
   function checkTrainingReadiness() {
     let totalCollected = 0;
     let readyWords = 0;
+    let wordsWithSamples = 0;
     const words = Object.keys(wordSampleCounts);
 
     words.forEach(w => {
       const cnt = wordSampleCounts[w] || 0;
       totalCollected += cnt;
+      if (cnt > 0) wordsWithSamples++;
       if (cnt >= REQUIRED_SAMPLES) readyWords++;
     });
 
@@ -709,13 +715,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const pct = Math.min((totalCollected / maxExpected) * 100, 100);
     if (datasetProgressFill) datasetProgressFill.style.width = `${pct}%`;
 
-    if (readyWords >= 1 || totalCollected >= 10) {
+    if (wordsWithSamples >= 2 && totalCollected >= 4) {
       trainStatusBanner.className = 'train-status-pill ready';
-      trainStatusBanner.innerHTML = `<span>✅ <strong>${readyWords} word(s) ready</strong> with recordings! Click below to train or re-train.</span>`;
+      trainStatusBanner.innerHTML = `<span>✅ <strong>${wordsWithSamples} words (${totalCollected} samples) ready</strong>! Click below to train 100 epochs.</span>`;
       btnTrain100.disabled = false;
     } else {
       trainStatusBanner.className = 'train-status-pill warn';
-      trainStatusBanner.innerHTML = `<span>⚠ Record 10 samples for any word to train the neural network.</span>`;
+      trainStatusBanner.innerHTML = `<span>⚠ Record samples for at least 2 words (e.g., RESTING + DOCTOR) to train the neural network.</span>`;
       btnTrain100.disabled = true;
     }
   }
@@ -741,15 +747,18 @@ document.addEventListener('DOMContentLoaded', () => {
     recordingIndicator.style.display = 'block';
     recordingIndicator.classList.add('recording-indicator-hud');
 
-    extractor.startRecording(word, async (w, capturedTensor) => {
+    extractor.startRecording(word, async (w, capturedTensor, capturedLandmarks) => {
       recordingIndicator.style.display = 'none';
       recordingIndicator.classList.remove('recording-indicator-hud');
 
       try {
+        const payload = { word: w, tensor: capturedTensor, sample_num: nextSlot };
+        if (capturedLandmarks) payload.landmarks = capturedLandmarks;
+
         const res = await fetch('/api/record_sample', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ word: w, tensor: capturedTensor, sample_num: nextSlot })
+          body: JSON.stringify(payload)
         });
         const result = await res.json();
         if (result.status === 'success') {
@@ -805,9 +814,9 @@ document.addEventListener('DOMContentLoaded', () => {
       recordingIndicator.style.display = 'block';
       recordingIndicator.classList.add('recording-indicator-hud');
 
-      const capturedTensor = await new Promise(resolve => {
-        extractor.startRecording(word, (w, tensor) => {
-          resolve(tensor);
+      const { tensor: capturedTensor, landmarks: capturedLandmarks } = await new Promise(resolve => {
+        extractor.startRecording(word, (w, tensor, landmarks) => {
+          resolve({ tensor, landmarks });
         });
       });
 
@@ -817,10 +826,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (cancelRecordingFlag) break;
 
       try {
+        const payload = { word: word, tensor: capturedTensor, sample_num: sampleIdx };
+        if (capturedLandmarks) payload.landmarks = capturedLandmarks;
+
         const res = await fetch('/api/record_sample', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ word: word, tensor: capturedTensor, sample_num: sampleIdx })
+          body: JSON.stringify(payload)
         });
         const result = await res.json();
         if (result.status === 'success') {
@@ -981,48 +993,57 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Manual 80-Epoch Neural Training Trigger
+  // Manual 100-Epoch Neural Training Trigger
   btnTrain100.addEventListener('click', async () => {
     btnTrain100.disabled = true;
-    btnTrain100.textContent = '⚡ Training Neural Model...';
+    btnTrain100.textContent = '⚡ Training Neural Model (100 Epochs)...';
     epochTrainingProgress.style.display = 'block';
 
-    let simulatedEpoch = 0;
-    const epochTicker = setInterval(() => {
-      simulatedEpoch = Math.min(simulatedEpoch + 2, 95);
-      epochProgressBar.style.width = `${simulatedEpoch}%`;
-      epochProgressLabel.textContent = `Optimizing Neural Weights (Epoch ${simulatedEpoch})...`;
-    }, 200);
+    const pollInterval = setInterval(async () => {
+      try {
+        const sRes = await fetch('/api/train_status');
+        const sData = await sRes.json();
+        if (sData.state === 'training' && sData.epoch && sData.epochs) {
+          const pct = Math.min(Math.round((sData.epoch / sData.epochs) * 100), 99);
+          epochProgressBar.style.width = `${pct}%`;
+          epochProgressLabel.textContent = `Optimizing Weights: Epoch ${sData.epoch}/${sData.epochs} (${sData.elapsed_s || 0}s)...`;
+          if (sData.loss) {
+            epochProgressValAcc.textContent = `Loss: ${Number(sData.loss).toFixed(4)}`;
+          }
+        }
+      } catch (_) {}
+    }, 400);
 
     try {
       const res = await fetch('/api/train', { method: 'POST' });
-      clearInterval(epochTicker);
+      clearInterval(pollInterval);
       const data = await res.json();
 
       if (data.status === 'success') {
         const r = data.training_result;
         epochProgressBar.style.width = '100%';
-        epochProgressLabel.textContent = `🎉 Training Complete in ${r.training_time_s}s!`;
-        epochProgressValAcc.textContent = `Accuracy: ${r.best_val_acc}%`;
+        epochProgressLabel.textContent = `🎉 100 Epochs Complete in ${r.training_time_s || r.total_seconds || 0}s!`;
+        epochProgressValAcc.textContent = `Accuracy: ${r.best_val_acc || 0}%`;
         trainStatusBanner.className = 'train-status-pill ready';
-        trainStatusBanner.innerHTML = `<span>🎉 <strong>Model Enhanced!</strong> Accuracy: <strong>${r.best_val_acc}%</strong> across <strong>${r.vocabulary.join(', ')}</strong>. Model hot-reloaded!</span>`;
+        trainStatusBanner.innerHTML = `<span>🎉 <strong>Model Enhanced!</strong> Accuracy: <strong>${r.best_val_acc || 0}%</strong> across <strong>${(r.vocabulary || []).join(', ')}</strong>. Hot-reloaded!</span>`;
 
         if (r.vocabulary) {
           activeModelClasses = r.vocabulary;
         }
 
-        alert(`Training Complete in ${r.training_time_s}s!\nAccuracy: ${r.best_val_acc}%\nActive Model Classes: ${r.vocabulary.join(', ')}\nModel weights hot-reloaded!`);
+        alert(`Training Complete in ${r.training_time_s || r.total_seconds}s!\nAccuracy: ${r.best_val_acc}%\nActive Model Classes: ${(r.vocabulary || []).join(', ')}\nModel weights hot-reloaded!`);
       } else {
         epochProgressBar.style.width = '0%';
         epochProgressLabel.textContent = 'Training stopped.';
         alert('Training Notice: ' + data.message);
       }
     } catch (e) {
-      clearInterval(epochTicker);
+      clearInterval(pollInterval);
       alert('Training error: ' + e.message);
     } finally {
       btnTrain100.disabled = false;
-      btnTrain100.textContent = '⚡ Train Neural Network on Stored Movements';
+      btnTrain100.textContent = '⚡ Train Neural Network on Stored Movements (100 Epochs)';
+    }
     }
   });
 

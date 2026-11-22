@@ -1,0 +1,21 @@
+{
+  "run_id": "20261123_035835",
+  "classes": [
+    "HELP",
+    "I_NEED_TO_STUDY_FOR_MY_UPCOMING_EXAM",
+    "I_WANT_WATER",
+    "PRINCE_KUMAR",
+    "RESTING",
+    "THANK_YOU"
+  ],
+  "num_classes": 6,
+  "input_dim": 12,
+  "feature_format": "legacy12",
+  "seq_len": 30,
+  "hidden": 64,
+  "layers": 2,
+  "dropout": 0.3,
+  "epochs_completed": 5,
+  "best_epoch": 4,
+  "val_accuracy": 1.0
+}

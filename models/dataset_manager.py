@@ -1,22 +1,14 @@
-import os
-import re
-import json
-import time
-import shutil
-from typing import Dict, List, Tuple, Optional
+"""Disk-backed dataset: dataset/<PHRASE>/sample_<ms>.npy  +  dataset/records.csv (saved record of every sample)."""
+import os, re, csv, time, hashlib, shutil
 import numpy as np
 
-# Optional PyTorch for dataset loading during local training
 try:
-    import torch
-    from torch.utils.data import Dataset, DataLoader
-    HAS_TORCH = True
-except (ImportError, ModuleNotFoundError):
-    HAS_TORCH = False
-    Dataset = object
-    DataLoader = None
+    from . import lip_features as LF
+except ImportError:
+    import lip_features as LF
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(MODELS_DIR)
 
 # Vercel Serverless environment handling: write operations must target /tmp
 IS_VERCEL = bool(os.environ.get("VERCEL"))
@@ -24,8 +16,10 @@ if IS_VERCEL:
     DATASET_DIR = "/tmp/dataset"
     VOCAB_FILE = "/tmp/vocab.json"
 else:
-    DATASET_DIR = os.path.join(BASE_DIR, "dataset")
-    VOCAB_FILE = os.path.join(BASE_DIR, "models", "vocab.json")
+    DATASET_DIR = os.path.join(ROOT, "dataset")
+    VOCAB_FILE = os.path.join(MODELS_DIR, "vocab.json")
+
+RECORDS_CSV = os.path.join(DATASET_DIR, "records.csv")
 
 DEFAULT_VOCABULARY = [
     "RESTING",
@@ -45,297 +39,182 @@ DEFAULT_VOCABULARY = [
 ]
 
 
-def clean_folder_name(phrase: str) -> str:
-    """Sanitizes any word or full sentence into a safe folder name."""
-    sanitized = re.sub(r'[^a-zA-Z0-9\s]', '', phrase.strip())
-    return sanitized.upper().replace(" ", "_")
+def sanitize_phrase(phrase):
+    s = re.sub(r"[^A-Za-z0-9 _-]", "", str(phrase)).strip().upper()
+    s = re.sub(r"[ -]+", "_", s)
+    if not s:
+        raise ValueError("empty phrase")
+    return s
+
+clean_folder_name = sanitize_phrase
 
 
-def folder_to_display_phrase(folder_name: str) -> str:
-    """Converts folder name back to human readable phrase/sentence."""
-    return folder_name.replace("_", " ").upper()
+def sha1_file(path):
+    h = hashlib.sha1()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 16), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
-def get_dynamic_vocabulary() -> List[str]:
-    """
-    Scans the dataset directory or loads cached vocab.json.
-    100% read-only safe for serverless runtimes.
-    """
-    vocab_list = []
-    if os.path.exists(DATASET_DIR):
+def add_phrase(phrase):
+    name = sanitize_phrase(phrase)
+    os.makedirs(os.path.join(DATASET_DIR, name), exist_ok=True)
+    return name
+
+add_custom_phrase = add_phrase
+
+
+def list_classes():
+    if not os.path.isdir(DATASET_DIR):
+        return []
+    return sorted(d for d in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, d)))
+
+
+def get_dynamic_vocabulary():
+    classes = list_classes()
+    if classes:
+        # Guarantee RESTING is first if present
+        if "RESTING" in classes:
+            classes.remove("RESTING")
+            return ["RESTING"] + classes
+        return classes
+    if os.path.exists(VOCAB_FILE):
         try:
-            folders = [f for f in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, f))]
-            if "RESTING" in folders:
-                vocab_list.append("RESTING")
-                folders.remove("RESTING")
-            else:
-                vocab_list.append("RESTING")
-
-            for f in sorted(folders):
-                display_name = folder_to_display_phrase(f)
-                if display_name not in vocab_list:
-                    vocab_list.append(display_name)
+            import json
+            with open(VOCAB_FILE, "r", encoding="utf-8") as f:
+                v = json.load(f)
+                if isinstance(v, list) and len(v) > 0:
+                    return v
         except Exception:
             pass
+    return list(DEFAULT_VOCABULARY)
 
-    if not vocab_list:
-        if os.path.exists(VOCAB_FILE):
-            try:
-                with open(VOCAB_FILE, "r", encoding="utf-8") as f:
-                    v = json.load(f)
-                    if isinstance(v, list) and len(v) > 0:
-                        vocab_list = v
-            except Exception:
-                pass
 
-    if not vocab_list:
-        vocab_list = list(DEFAULT_VOCABULARY)
-
-    # Save cached vocab.json if writable
+def save_sample(phrase, array, source="studio"):
+    """Save one recorded movement and append it to dataset/records.csv. Returns file path."""
+    name = add_phrase(phrase)
+    arr = np.asarray(array, dtype=np.float32)
+    fmt = LF.detect_format(arr)
+    if fmt is None:
+        raise ValueError(f"unsupported sample shape {arr.shape}; expected (T,12) or (T,44,2|3)")
+    stamp = int(time.time() * 1000)
+    path = os.path.join(DATASET_DIR, name, f"sample_{stamp}.npy")
+    while os.path.exists(path):          # never overwrite an existing recording
+        stamp += 1
+        path = os.path.join(DATASET_DIR, name, f"sample_{stamp}.npy")
+    np.save(path, arr)
+    new = not os.path.exists(RECORDS_CSV)
     try:
-        with open(VOCAB_FILE, "w", encoding="utf-8") as f:
-            json.dump(vocab_list, f, indent=2)
+        with open(RECORDS_CSV, "a", newline="") as f:
+            w = csv.writer(f)
+            if new:
+                w.writerow(["timestamp", "phrase", "file", "shape", "format", "source", "sha1"])
+            rel_p = os.path.relpath(path, ROOT) if not IS_VERCEL else path
+            w.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), name, rel_p,
+                        "x".join(map(str, arr.shape)), fmt, source, sha1_file(path)])
     except Exception:
         pass
-
-    return vocab_list
-
-
-def synthesize_custom_trajectory(phrase: str, seq_len: int = 30) -> np.ndarray:
-    """
-    Synthesizes an articulatory phonetic multi-syllable trajectory for any custom phrase or sentence.
-    Distributes aperture peaks proportionally across words.
-    """
-    words = phrase.strip().split()
-    n_words = max(1, len(words))
-    t = np.linspace(0, 1, seq_len)
-    
-    h = np.ones(seq_len) * 0.05
-    w = np.ones(seq_len) * 0.45
-    z = np.zeros(seq_len)
-
-    for i in range(n_words):
-        t_center = (i + 1) / (n_words + 1)
-        sigma = 0.08 / np.sqrt(n_words)
-        h += 0.28 * np.exp(-((t - t_center) ** 2) / (2 * sigma ** 2))
-        w += 0.06 * np.sin(2 * np.pi * t)
-
-    aspect = h / (w + 1e-5)
-    outer_h = h * 1.5 + 0.08
-    upper_thick = 0.04 + 0.02 * h
-    lower_thick = 0.05 + 0.03 * h
-    corner_angle = 0.02 * np.sin(np.linspace(0, np.pi, seq_len))
-    area = np.pi * (h / 2.0) * (w / 2.0)
-    
-    dh = np.gradient(h) * 5.0
-    dw = np.gradient(w) * 5.0
-    d2h = np.gradient(dh) * 2.0
-    
-    features = np.stack([
-        h, w, aspect, outer_h, upper_thick, lower_thick,
-        corner_angle, area, dh, dw, d2h, z
-    ], axis=-1)
-    return features.astype(np.float32)
+    return path
 
 
-def add_custom_phrase(phrase: str) -> str:
-    """
-    Creates a new dedicated folder for ANY custom word or full sentence.
-    Leaves the folder completely empty (0 files) so the user can record their 10 samples.
-    """
-    clean_name = clean_folder_name(phrase)
-    if not clean_name:
-        raise ValueError("Invalid phrase entered")
-
-    folder_path = os.path.join(DATASET_DIR, clean_name)
-    try:
-        os.makedirs(folder_path, exist_ok=True)
-    except (OSError, PermissionError):
-        pass
-
-    get_dynamic_vocabulary()  # Refresh vocab.json
-    return folder_to_display_phrase(clean_name)
+def save_user_sample(word, tensor, sample_num=None):
+    return save_sample(word, tensor, source=f"slot_{sample_num}" if sample_num is not None else "studio")
 
 
-def ensure_resting_baseline(num_samples: int = 10):
-    """
-    Ensures dataset/RESTING has at least num_samples resting baseline files
-    so the classifier always has a negative closed-mouth anchor to contrast against spoken words.
-    """
-    folder_path = os.path.join(DATASET_DIR, "RESTING")
-    os.makedirs(folder_path, exist_ok=True)
-    existing = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-    if len(existing) < num_samples:
-        seq_len = 30
-        for i in range(len(existing), num_samples):
-            # Quiet neutral mouth: aperture ~ 0.005, w ~ 0.45, zero velocity
-            h = np.ones(seq_len, dtype=np.float32) * 0.005 + np.random.normal(0, 0.0005, seq_len).astype(np.float32)
-            w = np.ones(seq_len, dtype=np.float32) * 0.45 + np.random.normal(0, 0.005, seq_len).astype(np.float32)
-            z = np.zeros(seq_len, dtype=np.float32)
-            aspect = h / (w + 1e-5)
-            outer_h = h * 1.5 + 0.08
-            upper_thick = np.ones(seq_len, dtype=np.float32) * 0.04
-            lower_thick = np.ones(seq_len, dtype=np.float32) * 0.05
-            corner_angle = np.zeros(seq_len, dtype=np.float32)
-            area = np.pi * (h / 2.0) * (w / 2.0)
-            dh = np.zeros(seq_len, dtype=np.float32)
-            dw = np.zeros(seq_len, dtype=np.float32)
-            d2h = np.zeros(seq_len, dtype=np.float32)
-
-            feat = np.stack([h, w, aspect, outer_h, upper_thick, lower_thick, corner_angle, area, dh, dw, d2h, z], axis=-1)
-            np.save(os.path.join(folder_path, f"sample_rest_{i+1:02d}.npy"), feat.astype(np.float32))
-
-
-def save_user_sample(phrase: str, tensor_data: List[List[float]], sample_num: Optional[int] = None) -> str:
-    """
-    Saves a captured 30x12 kinematic trajectory into dataset/<PHRASE>/sample_<num>_<timestamp>.npy
-    """
-    folder_name = clean_folder_name(phrase)
-    arr = np.array(tensor_data, dtype=np.float32)
-    if arr.shape != (30, 12):
-        raise ValueError(f"Expected shape (30, 12), got {arr.shape}")
-
-    timestamp = int(time.time() * 1000)
-    tag = f"sample_{sample_num:02d}_{timestamp}.npy" if sample_num else f"sample_{timestamp}.npy"
-
-    try:
-        folder_path = os.path.join(DATASET_DIR, folder_name)
-        os.makedirs(folder_path, exist_ok=True)
-        file_path = os.path.join(folder_path, tag)
-        np.save(file_path, arr)
-        return file_path
-    except (OSError, PermissionError):
-        tmp_folder = os.path.join("/tmp", "dataset", folder_name)
-        os.makedirs(tmp_folder, exist_ok=True)
-        file_path = os.path.join(tmp_folder, tag)
-        np.save(file_path, arr)
-        return file_path
-
-
-def clear_phrase_samples(phrase: str) -> int:
-    """Deletes all recording files for a specific phrase."""
-    folder_name = clean_folder_name(phrase)
-    folder_path = os.path.join(DATASET_DIR, folder_name)
-    deleted = 0
-    if os.path.exists(folder_path):
-        for f in os.listdir(folder_path):
+def clear_phrase_samples(phrase):
+    name = sanitize_phrase(phrase)
+    folder = os.path.join(DATASET_DIR, name)
+    if os.path.isdir(folder):
+        for f in os.listdir(folder):
             if f.endswith(".npy"):
-                try:
-                    os.remove(os.path.join(folder_path, f))
-                    deleted += 1
-                except Exception:
-                    pass
-    return deleted
+                try: os.remove(os.path.join(folder, f))
+                except Exception: pass
+    return {"status": "success", "word": name}
 
 
-def reset_entire_dataset() -> int:
-    """Empties all recorded .npy files from every folder in dataset/."""
-    deleted = 0
-    if os.path.exists(DATASET_DIR):
-        for root, dirs, files in os.walk(DATASET_DIR):
-            for f in files:
-                if f.endswith(".npy"):
-                    try:
-                        os.remove(os.path.join(root, f))
-                        deleted += 1
-                    except Exception:
-                        pass
-    return deleted
+def reset_entire_dataset():
+    if os.path.isdir(DATASET_DIR):
+        for d in os.listdir(DATASET_DIR):
+            p = os.path.join(DATASET_DIR, d)
+            if os.path.isdir(p) and d != "RESTING":
+                try: shutil.rmtree(p)
+                except Exception: pass
+    return {"status": "success"}
 
 
-def get_dataset_statistics() -> Dict:
-    vocab = get_dynamic_vocabulary()
-    per_word_counts = {}
-    real_recordings = {}
-    total_samples = 0
+def _is_seed(fname):
+    low = fname.lower()
+    return "seed" in low or "baseline" in low
 
-    for phrase in vocab:
-        folder_name = clean_folder_name(phrase)
-        folder_path = os.path.join(DATASET_DIR, folder_name)
-        if os.path.exists(folder_path):
-            files = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-            count = len(files)
-        else:
-            count = 0
-        per_word_counts[phrase] = count
-        real_recordings[phrase] = count
-        total_samples += count
 
+def load_dataset(fmt="auto", seq_len=30, include_seed=False):
+    raw = []  # (arr, class, path, fmt)
+    for cls in list_classes():
+        d = os.path.join(DATASET_DIR, cls)
+        for fn in sorted(os.listdir(d)):
+            if not fn.endswith(".npy") or (not include_seed and _is_seed(fn)):
+                continue
+            path = os.path.join(d, fn)
+            try:
+                arr = np.load(path)
+            except Exception:
+                continue
+            f = LF.detect_format(arr)
+            if f is not None:
+                raw.append((arr.astype(np.float32), cls, path, f))
+    if not raw:
+        raise ValueError("no usable .npy samples found in dataset/")
+    if fmt == "auto":
+        fmt = "landmarks44" if any(r[3] == "landmarks44" for r in raw) else "legacy12"
+    kept = [r for r in raw if r[3] == fmt]
+    dropped = len(raw) - len(kept)
+    classes = sorted({r[1] for r in kept})
+    cidx = {c: i for i, c in enumerate(classes)}
     return {
-        "vocabulary": vocab,
-        "per_word_counts": per_word_counts,
-        "real_recordings": real_recordings,
-        "total_samples": total_samples,
-        "vocabulary_size": len(vocab)
+        "fmt": fmt,
+        "classes": classes,
+        "arrays": [LF.resample_time(r[0], seq_len) for r in kept],
+        "labels": np.array([cidx[r[1]] for r in kept], dtype=np.int64),
+        "files": [os.path.relpath(r[2], ROOT) if not IS_VERCEL else r[2] for r in kept],
+        "counts": {c: int(sum(1 for r in kept if r[1] == c)) for c in classes},
+        "dropped_other_format": dropped,
     }
 
 
-class UserKinematicDataset(Dataset):
-    """
-    Loads all recorded .npy files from folders in dataset/ with biological augmentation.
-    Filters to only words that have at least 1 recorded sample.
-    """
-    def __init__(self, augment_factor: int = 8, active_words: Optional[List[str]] = None):
-        self.samples = []
-        self.labels = []
+def dataset_stats():
+    out = {}
+    for cls in list_classes():
+        d = os.path.join(DATASET_DIR, cls)
+        out[cls] = sum(1 for f in os.listdir(d) if f.endswith(".npy"))
+    return out
 
-        all_vocab = get_dynamic_vocabulary()
-        if active_words is not None:
-            vocab = [w for w in active_words if w in all_vocab]
-        else:
-            # Only include words that actually have at least 1 sample recorded!
-            vocab = []
-            for phrase in all_vocab:
-                folder_name = clean_folder_name(phrase)
-                folder_path = os.path.join(DATASET_DIR, folder_name)
-                if os.path.exists(folder_path):
-                    f_list = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-                    if len(f_list) > 0:
-                        vocab.append(phrase)
 
-        self.vocabulary = vocab
-        vocab_map = {word: idx for idx, word in enumerate(vocab)}
+def get_dataset_statistics():
+    counts = dataset_stats()
+    vocab = get_dynamic_vocabulary()
+    for v in vocab:
+        if v not in counts:
+            counts[v] = 0
+    tot = sum(counts.values())
+    return {
+        "vocabulary": vocab,
+        "vocabulary_size": len(vocab),
+        "real_recordings": counts,
+        "sample_counts": counts,
+        "total_recordings": tot,
+        "total_samples": tot
+    }
 
-        for phrase in vocab:
-            label_idx = vocab_map[phrase]
-            folder_name = clean_folder_name(phrase)
-            folder_path = os.path.join(DATASET_DIR, folder_name)
 
-            if not os.path.exists(folder_path):
-                continue
-
-            file_names = [f for f in os.listdir(folder_path) if f.endswith(".npy")]
-
-            for fname in file_names:
-                fpath = os.path.join(folder_path, fname)
-                try:
-                    raw_arr = np.load(fpath).astype(np.float32)
-                    if raw_arr.shape == (30, 12):
-                        self.samples.append(raw_arr)
-                        self.labels.append(label_idx)
-
-                        # Biological Augmentation (Motor Speed Variation + Spatial Scale + Sensor Noise)
-                        for _ in range(augment_factor):
-                            aug = raw_arr.copy()
-                            shift = np.random.randint(-2, 3)
-                            aug = np.roll(aug, shift, axis=0)
-                            scale = np.random.uniform(0.92, 1.08)
-                            aug[:, :6] *= scale
-                            noise = np.random.normal(0, 0.005, aug.shape)
-                            aug += noise
-
-                            self.samples.append(aug.astype(np.float32))
-                            self.labels.append(label_idx)
-                except Exception as e:
-                    print(f"Error loading {fpath}: {e}")
-
-        self.samples = np.array(self.samples, dtype=np.float32) if len(self.samples) > 0 else np.zeros((0, 30, 12), dtype=np.float32)
-        self.labels = np.array(self.labels, dtype=np.int64) if len(self.labels) > 0 else np.zeros((0,), dtype=np.int64)
+class UserKinematicDataset:
+    """Wrapper providing backward compatibility for torch training loops."""
+    def __init__(self, augment_factor=4, seq_len=30):
+        data = load_dataset(fmt="auto", seq_len=seq_len, include_seed=True)
+        self.vocabulary = data["classes"]
+        self.samples = data["arrays"]
+        self.labels = data["labels"]
+        self.fmt = data["fmt"]
 
     def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        if HAS_TORCH and torch is not None:
-            return torch.tensor(self.samples[idx]), torch.tensor(self.labels[idx])
-        return self.samples[idx], self.labels[idx]
+        return len(self.samples)

@@ -1,93 +1,111 @@
+"""VisemeTemporalNet: Conv + BiLSTM + scaled dot-product self-attention, with built-in feature normalisation."""
+import os, json, math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-VOCABULARY = [
-    "RESTING",       # 0: Neutral mouth
-    "HELP",          # 1: Bilabial burst /h/ -> open /ɛ/ -> lateral /l/ -> bilabial close /p/
-    "WATER",         # 2: Rounded protrusion /w/ -> open /ɔ/ -> flap /t/ -> neutral /ɚ/
-    "YES",           # 3: Palatal glide /j/ -> open-mid /ɛ/ -> alveolar fricative /s/
-    "NO",            # 4: Alveolar /n/ -> rounded diphthong /oʊ/
-    "DOCTOR",        # 5: Alveolar /d/ -> open /ɑ/ -> velar /k/ -> neutral /ɚ/
-    "PAIN",          # 6: Bilabial close /p/ -> spread diphthong /eɪ/ -> alveolar /n/
-    "THANK YOU",     # 7: Dental /θ/ -> open /æ/ -> velar /ŋ/ + glide /j/ -> rounded /u/
-    "TIRED",         # 8: Alveolar /t/ -> open diphthong /aɪ/ -> alveolar /d/
-    "NURSE",         # 9: Alveolar /n/ -> retroflex /ɚ/ -> alveolar fricative /s/
-    "BREATHE",       # 10: Bilabial /b/ -> retroflex /r/ -> high front /i/ -> dental /ð/
-    "MEDICINE"       # 11: Bilabial /m/ -> mid front /ɛ/ -> alveolar /d/ -> high /ɪ/ -> nasal /n/
-]
+try:
+    from . import lip_features as LF
+except ImportError:
+    import lip_features as LF
 
+MODELS_DIR = os.path.dirname(os.path.abspath(__file__))
+WEIGHTS_PATH = os.path.join(MODELS_DIR, "lip_model.pth")   # plain state_dict (incl. normalisation buffers)
+META_PATH = os.path.join(MODELS_DIR, "lip_model_meta.json")  # classes, input_dim, feature format, run_id ...
+
+VOCABULARY = [
+    "RESTING",
+    "HELP",
+    "WATER",
+    "YES",
+    "NO",
+    "DOCTOR",
+    "PAIN",
+    "THANK YOU",
+    "TIRED",
+    "NURSE",
+    "BREATHE",
+    "MEDICINE"
+]
 VOCAB_MAP = {word: idx for idx, word in enumerate(VOCABULARY)}
 
 
-class TemporalAttention(nn.Module):
-    """
-    Self-Attention layer to dynamically weigh key kinematic articulatory milestones
-    (e.g., initial bilabial contact, peak vowel opening, final closure).
-    """
-    def __init__(self, hidden_dim: int):
-        super(TemporalAttention, self).__init__()
-        self.attn = nn.Linear(hidden_dim, 1)
+class ConvBlock(nn.Module):
+    def __init__(self, ch, k=3, p=0.1):
+        super().__init__()
+        self.conv = nn.Conv1d(ch, ch, k, padding=k // 2)
+        self.bn = nn.BatchNorm1d(ch)
+        self.drop = nn.Dropout(p)
 
-    def forward(self, rnn_outputs: torch.Tensor) -> torch.Tensor:
-        # rnn_outputs: (batch_size, seq_len, hidden_dim)
-        scores = self.attn(rnn_outputs)  # (batch_size, seq_len, 1)
-        weights = F.softmax(scores, dim=1)  # Temporal attention distribution
-        context = torch.sum(weights * rnn_outputs, dim=1)  # (batch_size, hidden_dim)
-        return context, weights
+    def forward(self, x):
+        return x + self.drop(F.gelu(self.bn(self.conv(x))))
 
 
 class VisemeTemporalNet(nn.Module):
-    """
-    Spatio-Temporal Bi-LSTM with 1D-Convolution and Temporal Self-Attention
-    for Visual Speech Recognition (Lip-Reading) from 12D geometric kinematic vectors.
-    """
-    def __init__(self, input_dim: int = 12, hidden_dim: int = 64, num_classes: int = len(VOCABULARY)):
-        super(VisemeTemporalNet, self).__init__()
-        
-        # 1D Temporal Convolutional Feature Extractor
-        self.conv1 = nn.Conv1d(input_dim, 32, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm1d(32)
-        self.relu = nn.ReLU()
-        self.dropout_conv = nn.Dropout(0.15)
-        
-        # Bidirectional Long Short-Term Memory (BiLSTM)
-        self.lstm = nn.LSTM(
-            input_size=32,
-            hidden_size=hidden_dim,
-            num_layers=2,
-            batch_first=True,
-            bidirectional=True,
-            dropout=0.25
-        )
-        
-        # Self-Attention across the 30-frame temporal window
-        self.attention = TemporalAttention(hidden_dim * 2)
-        
-        # Classification Head
-        self.fc1 = nn.Linear(hidden_dim * 2, 64)
-        self.bn_fc = nn.BatchNorm1d(64)
-        self.dropout_fc = nn.Dropout(0.3)
-        self.fc2 = nn.Linear(64, num_classes)
+    def __init__(self, num_classes=len(VOCABULARY), input_dim=12, hidden=64, layers=2, dropout=0.3, conv_ch=64, **kwargs):
+        super().__init__()
+        # Allow hidden_dim alias for backward compatibility
+        if "hidden_dim" in kwargs:
+            hidden = kwargs["hidden_dim"]
+        self.num_classes, self.input_dim = num_classes, input_dim
+        self.register_buffer("feat_mean", torch.zeros(input_dim))
+        self.register_buffer("feat_std", torch.ones(input_dim))
+        self.proj = nn.Sequential(nn.Conv1d(input_dim, conv_ch, 3, padding=1), nn.BatchNorm1d(conv_ch), nn.GELU())
+        self.blocks = nn.Sequential(ConvBlock(conv_ch), ConvBlock(conv_ch))
+        self.lstm = nn.LSTM(conv_ch, hidden, num_layers=layers, batch_first=True, bidirectional=True,
+                            dropout=dropout if layers > 1 else 0.0)
+        d = hidden * 2
+        self.q, self.k, self.v = nn.Linear(d, d), nn.Linear(d, d), nn.Linear(d, d)
+        self.norm = nn.LayerNorm(d * 3)
+        self.drop = nn.Dropout(dropout)
+        self.head = nn.Linear(d * 3, num_classes)
 
-    def forward(self, x: torch.Tensor):
-        # x shape: (batch_size, seq_len=30, input_dim=12)
-        batch_size, seq_len, _ = x.size()
-        
-        # Reshape for Conv1D: (batch_size, input_dim, seq_len)
-        x_conv = x.transpose(1, 2)
-        x_conv = self.dropout_conv(self.relu(self.bn1(self.conv1(x_conv))))
-        
-        # Reshape back for LSTM: (batch_size, seq_len, channels=32)
-        x_lstm = x_conv.transpose(1, 2)
-        lstm_out, _ = self.lstm(x_lstm)  # (batch_size, seq_len, hidden_dim * 2)
-        
-        # Temporal Attention pooling
-        context, attn_weights = self.attention(lstm_out)  # (batch_size, 128)
-        
-        # Dense layers
-        out = self.dropout_fc(self.relu(self.bn_fc(self.fc1(context))))
-        logits = self.fc2(out)
-        probabilities = F.softmax(logits, dim=-1)
-        
-        return probabilities, attn_weights
+    def forward(self, x):                      # x: (B, T, D) raw features
+        x = (x - self.feat_mean) / self.feat_std
+        h = self.blocks(self.proj(x.transpose(1, 2))).transpose(1, 2)   # (B, T, C)
+        out, _ = self.lstm(h)                                           # (B, T, 2H)
+        att = torch.softmax(self.q(out) @ self.k(out).transpose(1, 2) / math.sqrt(out.size(-1)), dim=-1)
+        ctx = att @ self.v(out)
+        z = torch.cat([ctx.mean(1), out.mean(1), out.max(1).values], dim=-1)
+        logits = self.head(self.drop(self.norm(z)))
+        return logits
+
+
+def load_model(models_dir=MODELS_DIR, device="cpu"):
+    """Returns (model, meta) or (None, None) if nothing has been trained yet."""
+    mp, wp = os.path.join(models_dir, "lip_model_meta.json"), os.path.join(models_dir, "lip_model.pth")
+    if not (os.path.exists(mp) and os.path.exists(wp)):
+        return None, None
+    try:
+        with open(mp, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+        m = VisemeTemporalNet(meta["num_classes"], meta["input_dim"], meta.get("hidden", 64),
+                              meta.get("layers", 2), meta.get("dropout", 0.3))
+        state = torch.load(wp, map_location=device)
+        m.load_state_dict(state)
+        return m.to(device).eval(), meta
+    except Exception as e:
+        print(f"[LOAD_MODEL WARNING] Could not load model: {e}")
+        return None, None
+
+
+@torch.no_grad()
+def predict(model, meta, arr, device="cpu"):
+    """arr: (T,12) legacy or (T,44,2|3) lip landmarks. Returns (probs ndarray, best_class_name)."""
+    arr = np.asarray(arr, dtype=np.float32)
+    fmt = LF.detect_format(arr)
+    expected_fmt = meta.get("feature_format", "legacy12")
+    if fmt != expected_fmt:
+        # If model expects landmarks44 but received legacy12, or vice-versa, fall back gracefully if possible
+        if fmt is None:
+            raise ValueError(f"model expects {expected_fmt}, got array shape {arr.shape}")
+    seq_len = meta.get("seq_len", 30)
+    feats = LF.prepare_features(arr, fmt, seq_len)
+    x = torch.from_numpy(feats).unsqueeze(0).to(device)
+    logits = model(x)
+    probs = torch.softmax(logits, dim=-1)[0].cpu().numpy()
+    classes = meta.get("classes", VOCABULARY)
+    pred_idx = int(probs.argmax())
+    best_class = classes[pred_idx] if pred_idx < len(classes) else "UNKNOWN"
+    return probs, best_class
