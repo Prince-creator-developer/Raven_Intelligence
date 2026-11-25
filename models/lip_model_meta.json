@@ -1,12 +1,12 @@
 {
-  "run_id": "20261125_145425",
+  "run_id": "20261125_235403",
   "classes": [
+    "COULD_YOU_TURN_DOWN_THE_AIR_CONDITIONING",
+    "DOCTOR",
     "ENCAPSULATION",
     "HELP",
-    "I_NEED_TO_STUDY_FOR_MY_UPCOMING_EXAM",
-    "I_WANT_WATER",
-    "PRINCE_KUMAR",
-    "RESTING",
+    "I_AM_GOING_TO_BE_LATE_FOR_MY_MEETING",
+    "SAMSUNG",
     "THANK_YOU",
     "WATER"
   ],
@@ -18,6 +18,6 @@
   "layers": 2,
   "dropout": 0.3,
   "epochs_completed": 100,
-  "best_epoch": 15,
+  "best_epoch": 58,
   "val_accuracy": 1.0
 }
