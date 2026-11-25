@@ -755,7 +755,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Record 1 Single Sample for a Word
   window.recordSingleSample = async function(word) {
     if (!isCameraActive || !latestLandmarks) {
-      alert('Please start the camera and face the lens before recording.');
+      const start = confirm(`Camera is currently off.\n\nClick OK to turn on your camera now to record "${word}".`);
+      if (start && btnCamera) {
+        btnCamera.click();
+      }
       return;
     }
 
@@ -802,7 +805,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Guided 10x Recording Sequence with Instant Auto-Enhance
   window.record10xSequence = async function(word) {
     if (!isCameraActive || !latestLandmarks) {
-      alert('Please start the camera and face the lens first.');
+      const start = confirm(`Camera is currently off.\n\nClick OK to turn on your camera now to record 10 samples for "${word}".`);
+      if (start && btnCamera) {
+        btnCamera.click();
+      }
       return;
     }
 
@@ -1069,7 +1075,6 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       btnTrain100.disabled = false;
       btnTrain100.textContent = '⚡ Train Neural Network on Stored Movements (100 Epochs)';
-    }
     }
   });
 
