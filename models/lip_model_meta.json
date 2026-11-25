@@ -1,14 +1,16 @@
 {
-  "run_id": "20261123_040914",
+  "run_id": "20261125_145425",
   "classes": [
+    "ENCAPSULATION",
     "HELP",
     "I_NEED_TO_STUDY_FOR_MY_UPCOMING_EXAM",
     "I_WANT_WATER",
     "PRINCE_KUMAR",
     "RESTING",
-    "THANK_YOU"
+    "THANK_YOU",
+    "WATER"
   ],
-  "num_classes": 6,
+  "num_classes": 8,
   "input_dim": 12,
   "feature_format": "legacy12",
   "seq_len": 30,
@@ -16,6 +18,6 @@
   "layers": 2,
   "dropout": 0.3,
   "epochs_completed": 100,
-  "best_epoch": 50,
+  "best_epoch": 15,
   "val_accuracy": 1.0
 }

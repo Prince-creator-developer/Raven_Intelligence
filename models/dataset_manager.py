@@ -166,18 +166,43 @@ def load_dataset(fmt="auto", seq_len=30, include_seed=False):
     if not raw:
         raise ValueError("no usable .npy samples found in dataset/")
     if fmt == "auto":
-        fmt = "landmarks44" if any(r[3] == "landmarks44" for r in raw) else "legacy12"
-    kept = [r for r in raw if r[3] == fmt]
-    dropped = len(raw) - len(kept)
-    classes = sorted({r[1] for r in kept})
+        has_legacy = any(r[3] == "legacy12" for r in raw)
+        has_landmarks = any(r[3] == "landmarks44" for r in raw)
+        if has_legacy and has_landmarks:
+            fmt = "legacy12"
+        elif has_landmarks:
+            fmt = "landmarks44"
+        else:
+            fmt = "legacy12"
+
+    kept_arrays = []
+    kept_classes = []
+    kept_files = []
+    dropped = 0
+
+    for r in raw:
+        arr, cls, path, f = r
+        if f == fmt:
+            kept_arrays.append(LF.resample_time(arr, seq_len))
+            kept_classes.append(cls)
+            kept_files.append(os.path.relpath(path, ROOT) if not IS_VERCEL else path)
+        elif fmt == "legacy12" and f == "landmarks44":
+            arr12 = LF.landmarks_to_12d(arr)
+            kept_arrays.append(LF.resample_time(arr12, seq_len))
+            kept_classes.append(cls)
+            kept_files.append(os.path.relpath(path, ROOT) if not IS_VERCEL else path)
+        else:
+            dropped += 1
+
+    classes = sorted(set(kept_classes))
     cidx = {c: i for i, c in enumerate(classes)}
     return {
         "fmt": fmt,
         "classes": classes,
-        "arrays": [LF.resample_time(r[0], seq_len) for r in kept],
-        "labels": np.array([cidx[r[1]] for r in kept], dtype=np.int64),
-        "files": [os.path.relpath(r[2], ROOT) if not IS_VERCEL else r[2] for r in kept],
-        "counts": {c: int(sum(1 for r in kept if r[1] == c)) for c in classes},
+        "arrays": kept_arrays,
+        "labels": np.array([cidx[c] for c in kept_classes], dtype=np.int64),
+        "files": kept_files,
+        "counts": {c: int(sum(1 for cl in kept_classes if cl == c)) for c in classes},
         "dropped_other_format": dropped,
     }
 
